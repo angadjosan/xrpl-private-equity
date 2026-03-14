@@ -158,6 +158,7 @@ export interface TransferDocumentData {
   cashflowPoolNote: string
   signatureName: string
   signatureDate: string
+  verificationPeriodDays?: number
 }
 
 export interface CredentialInfo {

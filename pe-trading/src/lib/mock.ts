@@ -99,17 +99,22 @@ export function mockTrades(basePrice: number): Trade[] {
 }
 
 export function mockCandles(basePrice: number, count = 200): Candle[] {
-  const candles: Candle[] = []
-  let price = basePrice * 0.94
+  // Generate backwards from the current price so the last candle
+  // closes at basePrice and the Y-axis aligns with the real price.
   const now = Date.now()
+  const closes: number[] = new Array(count)
+  closes[count - 1] = basePrice
+  for (let i = count - 2; i >= 0; i--) {
+    closes[i] = closes[i + 1] * (1 + (Math.random() - 0.52) * 0.006)
+  }
+
+  const candles: Candle[] = []
   for (let i = 0; i < count; i++) {
-    const open = price
-    const change = (Math.random() - 0.48) * basePrice * 0.006
-    const close = open + change
+    const close = closes[i]
+    const open = i === 0 ? close * (1 + (Math.random() - 0.5) * 0.003) : closes[i - 1]
     const high = Math.max(open, close) + Math.random() * basePrice * 0.002
     const low = Math.min(open, close) - Math.random() * basePrice * 0.002
     candles.push({ open, high, low, close, volume: Math.random() * 500 + 5, timestamp: now - (count - i) * 60000 })
-    price = close
   }
   return candles
 }
