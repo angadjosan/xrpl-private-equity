@@ -100,10 +100,14 @@ export default function RegisterShares({ onBack, registrations, onNewRegistratio
       setStep('Creating escrow...')
       const { condition, fulfillment } = await generateCryptoCondition()
       const cancelAfterSeconds = verificationDays * 24 * 60 * 60
+      // FinishAfter = 1 hour grace period — escrow cannot be claimed until
+      // at least 1 hour has passed, giving the verifier time to review.
+      // CancelAfter = full verification period — escrow expires if not verified.
+      const finishAfterSeconds = Math.min(60 * 60, cancelAfterSeconds - 60)
 
       const { sequence } = await createMPTEscrow(
         client, wallets.protocol, shareholderWallet.address,
-        mptId, shares, condition, cancelAfterSeconds
+        mptId, shares, condition, cancelAfterSeconds, finishAfterSeconds
       )
 
       // Create registration record

@@ -22,6 +22,9 @@ import { submitWithRetry } from './client'
  * @param amount - Amount of MPT to escrow as string
  * @param condition - Optional hex-encoded PREIMAGE-SHA-256 crypto-condition
  * @param cancelAfterSeconds - Seconds from now until escrow can be cancelled (default: 90 days)
+ * @param finishAfterSeconds - Seconds from now until escrow can be claimed (maturity period).
+ *   Prevents premature claims — the escrow cannot be finished before this time.
+ *   Should be coordinated with the verification deadline.
  * @returns Object containing TxResponse and the escrow's sequence number
  */
 export async function createMPTEscrow(
@@ -31,9 +34,11 @@ export async function createMPTEscrow(
   mptIssuanceId: string,
   amount: string,
   condition?: string,
-  cancelAfterSeconds: number = DEFAULT_ESCROW_EXPIRY_SECONDS
+  cancelAfterSeconds: number = DEFAULT_ESCROW_EXPIRY_SECONDS,
+  finishAfterSeconds?: number
 ): Promise<{ result: TxResponse; sequence: number }> {
-  const cancelAfter = unixToRippleTime(Date.now() / 1000 + cancelAfterSeconds)
+  const nowSeconds = Date.now() / 1000
+  const cancelAfter = unixToRippleTime(nowSeconds + cancelAfterSeconds)
 
   const tx: Record<string, unknown> = {
     TransactionType: 'EscrowCreate',
@@ -44,6 +49,11 @@ export async function createMPTEscrow(
       value: amount,
     },
     CancelAfter: cancelAfter,
+  }
+
+  if (finishAfterSeconds !== undefined) {
+    // FinishAfter must be before CancelAfter per XRPL spec
+    tx.FinishAfter = unixToRippleTime(nowSeconds + finishAfterSeconds)
   }
 
   if (condition) {

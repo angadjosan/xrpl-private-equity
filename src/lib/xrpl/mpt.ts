@@ -229,6 +229,8 @@ export async function clawbackMPT(
     Amount: {
       mpt_issuance_id: mptIssuanceId,
       value: amount,
+      // Per XRPL Clawback spec: Amount.issuer = the account being clawed back FROM
+      // (not the token issuer). The sender (Account) is the actual issuer.
       issuer: holderAddress,
     },
   }
