@@ -39,29 +39,79 @@ export interface AdditionalInfo {
   share_class?: string
   par_value?: string
   cashflow_currency?: string
-  cashflow_token?: string
   distribution_frequency?: string
   jurisdiction?: string
   cusip?: string
   transfer_restrictions?: string
+  // Proof / verification fields
+  entity_type?: string          // C-Corp, S-Corp, LLC, LP, etc.
+  registration_number?: string  // EIN, CRN, company number
+  proof_type?: string           // stock_certificate, cap_table, board_resolution, etc.
+  proof_reference?: string      // document hash, Carta link, certificate number, etc.
+  transfer_agent?: string       // Carta, AST, Computershare, etc.
+  governing_law?: string        // Reg D 506(b), 506(c), Reg S, Reg A+, etc.
 }
+
+// ─── Proof Types ─────────────────────────────────────────────
+
+export const PROOF_TYPES = [
+  { value: 'stock_certificate', label: 'Stock Certificate', hint: 'Certificate number or document hash' },
+  { value: 'cap_table', label: 'Cap Table Extract', hint: 'Platform link or export hash (e.g. Carta, Pulley)' },
+  { value: 'board_resolution', label: 'Board Resolution', hint: 'Resolution number or document hash' },
+  { value: 'transfer_agent_letter', label: 'Transfer Agent Confirmation', hint: 'Confirmation reference number' },
+  { value: 'operating_agreement', label: 'Operating Agreement (LLC)', hint: 'Agreement hash or reference' },
+  { value: 'subscription_agreement', label: 'Subscription Agreement', hint: 'Agreement hash or reference' },
+  { value: 'spv_agreement', label: 'SPV Operating Agreement', hint: 'SPV formation document hash' },
+] as const
+
+export const ENTITY_TYPES = [
+  'C-Corp',
+  'S-Corp',
+  'LLC',
+  'LP',
+  'LLP',
+  'Trust',
+  'SPV',
+] as const
+
+export const EXEMPTION_TYPES = [
+  { value: '', label: 'None / Not Applicable' },
+  { value: 'reg_d_506b', label: 'Reg D 506(b)' },
+  { value: 'reg_d_506c', label: 'Reg D 506(c)' },
+  { value: 'reg_s', label: 'Reg S (Non-US)' },
+  { value: 'reg_a_plus', label: 'Reg A+' },
+  { value: 'reg_cf', label: 'Reg CF (Crowdfunding)' },
+  { value: 'section_4a2', label: 'Section 4(a)(2)' },
+  { value: 'rule_144', label: 'Rule 144' },
+] as const
 
 // ─── Token Creation ──────────────────────────────────────────
 
 export interface CreateTokenForm {
+  // Company
   companyName: string
   ticker: string
   description: string
+  entityType: string
+  jurisdiction: string
+  registrationNumber: string
+  // Share structure
   totalShares: number
-  assetScale: number
-  transferFee: number
   shareClass: string
   parValue: string
+  assetScale: number
+  transferFee: number
+  // Proof of ownership
+  proofType: string
+  proofReference: string
+  transferAgent: string
+  cusip: string
+  // Compliance
+  exemption: string
+  // Distributions
   cashflowCurrency: string
-  cashflowToken: string
   distributionFrequency: string
-  jurisdiction: string
-  companyWebsite: string
+  // Flags
   flagSelections: FlagSelections
 }
 
@@ -118,8 +168,8 @@ export interface EscrowInfo {
 }
 
 export interface CryptoConditionPair {
-  condition: string    // hex-encoded PREIMAGE-SHA-256 condition
-  fulfillment: string  // hex-encoded fulfillment (preimage)
+  condition: string
+  fulfillment: string
 }
 
 // ─── Transaction Status ──────────────────────────────────────

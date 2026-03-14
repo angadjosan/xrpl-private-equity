@@ -1,12 +1,15 @@
 'use client'
 
 import { useToken } from '@/hooks/useToken'
-import { truncateAddress } from '@/utils/format'
+import { PROOF_TYPES } from '@/types'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
   const mptId = token.mptIssuanceId!
   const meta = token.metadata
+  const ai = meta?.ai as Record<string, string> | undefined
+
+  const proofLabel = PROOF_TYPES.find(p => p.value === ai?.proof_type)?.label ?? ai?.proof_type
 
   return (
     <div className="space-y-8">
@@ -20,7 +23,7 @@ export default function ShareManager() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Token Issued</h1>
           <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-            Your equity token is live on the XRP Ledger. All metadata is stored on-chain per XLS-89.
+            Live on the XRP Ledger. All metadata stored on-chain per XLS-89.
           </p>
         </div>
       </div>
@@ -53,34 +56,50 @@ export default function ShareManager() {
         )}
       </div>
 
-      {/* On-Chain Metadata */}
+      {/* Company Details */}
       <div className="glass space-y-4">
-        <h2 className="text-base font-semibold">On-Chain Metadata</h2>
-        <p className="text-xs text-[var(--text-tertiary)] -mt-2">Immutable. Stored directly on the XRP Ledger.</p>
-
+        <h2 className="text-base font-semibold">Company Details</h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-          <MetaRow label="Asset Class" value={meta?.ac === 'rwa' ? 'Real World Asset' : meta?.ac} />
-          <MetaRow label="Asset Subclass" value={meta?.as === 'equity' ? 'Equity' : meta?.as} />
-          {meta?.ai?.share_class && <MetaRow label="Share Class" value={meta.ai.share_class} />}
-          {meta?.ai?.par_value && <MetaRow label="Par Value" value={meta.ai.par_value} />}
-          {meta?.ai?.jurisdiction && <MetaRow label="Jurisdiction" value={meta.ai.jurisdiction} />}
-          {meta?.ai?.cashflow_currency && <MetaRow label="Distribution Currency" value={meta.ai.cashflow_currency} />}
-          {meta?.ai?.cashflow_token && <MetaRow label="Payment Token" value={meta.ai.cashflow_token} />}
-          {meta?.ai?.distribution_frequency && <MetaRow label="Distribution Frequency" value={meta.ai.distribution_frequency} />}
+          <MetaRow label="Asset Class" value="Real World Asset (Equity)" />
+          {ai?.entity_type && <MetaRow label="Entity Type" value={ai.entity_type} />}
+          {ai?.jurisdiction && <MetaRow label="Jurisdiction" value={ai.jurisdiction} />}
+          {ai?.registration_number && <MetaRow label="Registration / EIN" value={ai.registration_number} />}
+          {ai?.share_class && <MetaRow label="Share Class" value={ai.share_class} />}
+          {ai?.par_value && <MetaRow label="Par Value" value={ai.par_value} />}
+          {ai?.cusip && <MetaRow label="CUSIP / ISIN" value={ai.cusip} />}
         </div>
-
-        {meta?.us && meta.us.length > 0 && (
-          <>
-            <div className="divider" />
-            <div>
-              <p className="label">Links</p>
-              {meta.us.map((link, i) => (
-                <p key={i} className="text-sm text-[var(--accent)] break-all">{link.u}</p>
-              ))}
-            </div>
-          </>
-        )}
       </div>
+
+      {/* Proof of Ownership */}
+      {ai?.proof_type && (
+        <div className="glass space-y-4">
+          <h2 className="text-base font-semibold">Proof of Ownership</h2>
+          <div className="grid grid-cols-1 gap-y-3">
+            <MetaRow label="Proof Method" value={proofLabel} />
+            {ai?.proof_reference && <MetaRow label="Reference" value={ai.proof_reference} />}
+            {ai?.transfer_agent && <MetaRow label="Transfer Agent" value={ai.transfer_agent} />}
+          </div>
+        </div>
+      )}
+
+      {/* Compliance */}
+      {ai?.governing_law && (
+        <div className="glass space-y-4">
+          <h2 className="text-base font-semibold">Compliance</h2>
+          <MetaRow label="Securities Exemption" value={ai.governing_law.replace(/_/g, ' ')} />
+        </div>
+      )}
+
+      {/* Distributions */}
+      {(ai?.cashflow_currency || ai?.distribution_frequency) && (
+        <div className="glass space-y-4">
+          <h2 className="text-base font-semibold">Distributions</h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            {ai?.cashflow_currency && <MetaRow label="Currency" value={ai.cashflow_currency} />}
+            {ai?.distribution_frequency && <MetaRow label="Frequency" value={ai.distribution_frequency} />}
+          </div>
+        </div>
+      )}
 
       {/* Token Rules */}
       <div className="glass space-y-3">
@@ -95,7 +114,6 @@ export default function ShareManager() {
         </div>
       </div>
 
-      {/* Create Another */}
       <button onClick={reset} className="btn-ghost w-full border border-dashed border-white/[0.08]">
         Issue Another Token
       </button>
