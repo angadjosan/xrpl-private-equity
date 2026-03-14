@@ -1,26 +1,25 @@
 'use client'
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
 import type { Wallet } from 'xrpl'
 import { XRPLContext } from './XRPLContext'
 import type { WalletState } from '@/types'
 
 interface WalletContextValue {
   wallets: WalletState
-  generateIssuer: () => Promise<void>
-  generateProtocol: () => Promise<void>
-  addShareholder: () => Promise<void>
+  /** Ensures issuer + protocol wallets exist, auto-creates if not. Returns true if ready. */
+  ensureWallets: () => Promise<boolean>
+  addShareholder: () => Promise<Wallet | null>
   removeShareholder: (index: number) => void
-  loading: boolean
+  provisioning: boolean
 }
 
 export const WalletContext = createContext<WalletContextValue>({
   wallets: { issuer: null, protocol: null, shareholders: [] },
-  generateIssuer: async () => {},
-  generateProtocol: async () => {},
-  addShareholder: async () => {},
+  ensureWallets: async () => false,
+  addShareholder: async () => null,
   removeShareholder: () => {},
-  loading: false,
+  provisioning: false,
 })
 
 export function WalletProvider({ children }: { children: ReactNode }) {
@@ -30,37 +29,51 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     protocol: null,
     shareholders: [],
   })
-  const [loading, setLoading] = useState(false)
+  const [provisioning, setProvisioning] = useState(false)
+  const provisioningRef = useRef(false)
 
   const fundNewWallet = useCallback(async (): Promise<Wallet | null> => {
     if (!client?.isConnected()) return null
-    setLoading(true)
     try {
       const { wallet } = await client.fundWallet()
       return wallet
     } catch (err) {
       console.error('Failed to fund wallet:', err)
       return null
-    } finally {
-      setLoading(false)
     }
   }, [client])
 
-  const generateIssuer = useCallback(async () => {
-    const wallet = await fundNewWallet()
-    if (wallet) {
-      setWallets(prev => ({ ...prev, issuer: wallet }))
-    }
-  }, [fundNewWallet])
+  // Silently provisions issuer + protocol wallets if they don't exist
+  const ensureWallets = useCallback(async (): Promise<boolean> => {
+    if (provisioningRef.current) return false
+    provisioningRef.current = true
+    setProvisioning(true)
 
-  const generateProtocol = useCallback(async () => {
-    const wallet = await fundNewWallet()
-    if (wallet) {
-      setWallets(prev => ({ ...prev, protocol: wallet }))
-    }
-  }, [fundNewWallet])
+    try {
+      let currentWallets = wallets
 
-  const addShareholder = useCallback(async () => {
+      if (!currentWallets.issuer) {
+        const issuer = await fundNewWallet()
+        if (!issuer) return false
+        currentWallets = { ...currentWallets, issuer }
+        setWallets(prev => ({ ...prev, issuer }))
+      }
+
+      if (!currentWallets.protocol) {
+        const protocol = await fundNewWallet()
+        if (!protocol) return false
+        currentWallets = { ...currentWallets, protocol }
+        setWallets(prev => ({ ...prev, protocol }))
+      }
+
+      return true
+    } finally {
+      setProvisioning(false)
+      provisioningRef.current = false
+    }
+  }, [wallets, fundNewWallet])
+
+  const addShareholder = useCallback(async (): Promise<Wallet | null> => {
     const wallet = await fundNewWallet()
     if (wallet) {
       setWallets(prev => ({
@@ -68,6 +81,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         shareholders: [...prev.shareholders, wallet],
       }))
     }
+    return wallet
   }, [fundNewWallet])
 
   const removeShareholder = useCallback((index: number) => {
@@ -79,14 +93,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{
-        wallets,
-        generateIssuer,
-        generateProtocol,
-        addShareholder,
-        removeShareholder,
-        loading,
-      }}
+      value={{ wallets, ensureWallets, addShareholder, removeShareholder, provisioning }}
     >
       {children}
     </WalletContext.Provider>
