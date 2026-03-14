@@ -61,7 +61,8 @@ export default function CreateForm() {
   if (!form.shareClass) errors.shareClass = 'Required'
   if (!form.proofType) errors.proofType = 'Select a proof type'
   if (!form.proofReference) errors.proofReference = 'Required'
-  if (metadataSize > 1024) errors._metadata = 'Metadata exceeds 1024 byte limit'
+  if (form.transferFee < 0 || form.transferFee > 50000) errors.transferFee = 'Must be 0–50,000 (0%–50%)'
+  if (metadataSize > 1024) errors._metadata = `Metadata is ${metadataSize} bytes — exceeds 1,024 byte limit. Shorten the description or remove optional fields.`
   const isValid = Object.keys(errors).length === 0
 
   const update = (field: keyof CreateTokenForm, value: string | number) => {
@@ -115,6 +116,20 @@ export default function CreateForm() {
       setMetadata(metadata)
       setTotalShares(form.totalShares)
       setFlags(flagsValue)
+
+      // Persist to localStorage so TokenList can show it across sessions
+      try {
+        const saved = JSON.parse(localStorage.getItem('equity_tokens') || '[]')
+        saved.push({
+          mptIssuanceId,
+          issuer: issuer.address,
+          maxAmount: String(form.totalShares),
+          metadata,
+          flags: flagsValue,
+          createdAt: new Date().toISOString(),
+        })
+        localStorage.setItem('equity_tokens', JSON.stringify(saved))
+      } catch { /* localStorage unavailable */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Deployment failed')
       setPhase(null)
@@ -221,7 +236,7 @@ export default function CreateForm() {
               {EXEMPTION_TYPES.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
             </select>
           </Field>
-          <Field label="Transfer Fee" hint="Tenths of a basis point (0 = free)">
+          <Field label="Transfer Fee" error={showError('transferFee')} hint="Tenths of a basis point (0 = free, max 50,000 = 50%)">
             <input type="number" className="input" value={form.transferFee} onChange={e => update('transferFee', parseInt(e.target.value) || 0)} min={0} max={50000} disabled={deploying} />
           </Field>
         </div>
@@ -296,6 +311,13 @@ export default function CreateForm() {
           })}
         </div>
       </div>
+
+      {/* Metadata size warning (shown live as user types) */}
+      {errors._metadata && (
+        <div className="rounded-xl border border-[var(--red)]/20 bg-[var(--red-soft)] px-4 py-3 text-sm text-[var(--red)]">
+          {errors._metadata}
+        </div>
+      )}
 
       {/* Error */}
       {error && (

@@ -1,150 +1,53 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useXRPL } from '@/hooks/useXRPL'
-import { decodeMetadataHex } from '@/lib/metadata'
+import { useEffect, useState } from 'react'
 import type { EquityMetadata } from '@/types'
 
 interface TokenEntry {
   mptIssuanceId: string
   issuer: string
   maxAmount: string
-  outstanding: string
   metadata: EquityMetadata | null
   flags: number
-  assetScale: number
+  createdAt?: string
 }
 
-// devnet returns very few entries per page (~5-10) despite limit param,
-// so we need many pages to scan all issuances. 200 pages is safe for ~1000 tokens.
-const MAX_PAGES = 200
+const STORAGE_KEY = 'equity_tokens'
+
+function loadTokens(): TokenEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+  } catch {
+    return []
+  }
+}
 
 export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) {
-  const { client, status } = useXRPL()
   const [tokens, setTokens] = useState<TokenEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [scanned, setScanned] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
-  const fetchTokens = useCallback(async () => {
-    if (!client?.isConnected()) return
-    setLoading(true)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allEntries: Record<string, unknown>[] = []
-
-      // Scan the ledger for ALL MPT issuances (not scoped to a single account)
-      let marker: unknown = undefined
-      let pages = 0
-      do {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const req: any = {
-          command: 'ledger_data',
-          type: 'mpt_issuance',
-          limit: 256,
-        }
-        if (marker) req.marker = marker
-
-        const response = await client.request(req)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = response.result as any
-        const state = result.state as any[] | undefined
-        if (state) allEntries.push(...state)
-        marker = result.marker
-        pages++
-      } while (marker && pages < MAX_PAGES)
-
-      if (allEntries.length === 0) {
-        setTokens([])
-        setScanned(true)
-        return
-      }
-
-      // Parse entries — use inline metadata, fallback to ledger_entry only when missing
-      const parsed: TokenEntry[] = allEntries.map((entry: Record<string, unknown>) => {
-        const id = (entry.mpt_issuance_id ?? entry.MPTokenIssuanceID ?? entry.index ?? '') as string
-        let metadata: EquityMetadata | null = null
-
-        if (entry.MPTokenMetadata) {
-          try { metadata = decodeMetadataHex(entry.MPTokenMetadata as string) } catch {}
-        }
-
-        return {
-          mptIssuanceId: id,
-          issuer: (entry.Issuer ?? entry.issuer ?? '') as string,
-          maxAmount: (entry.MaximumAmount ?? entry.maximum_amount ?? '0') as string,
-          outstanding: (entry.OutstandingAmount ?? entry.outstanding_amount ?? '0') as string,
-          metadata,
-          flags: (entry.Flags ?? entry.flags ?? 0) as number,
-          assetScale: (entry.AssetScale ?? entry.asset_scale ?? 0) as number,
-        }
-      })
-
-      // For tokens missing metadata, fetch via ledger_entry (batched, 5 at a time)
-      const needsFetch = parsed.filter(t => !t.metadata && t.mptIssuanceId)
-      for (let i = 0; i < needsFetch.length; i += 5) {
-        const batch = needsFetch.slice(i, i + 5)
-        await Promise.all(batch.map(async (token) => {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const full = await client!.request({ command: 'ledger_entry', mpt_issuance: token.mptIssuanceId } as any)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const node = (full.result as any).node
-            if (node?.MPTokenMetadata) {
-              token.metadata = decodeMetadataHex(node.MPTokenMetadata as string)
-            }
-          } catch { /* no metadata available */ }
-        }))
-      }
-
-      // Show equity tokens first (those with ac=rwa, as=equity), then all others
-      const equity = parsed.filter(t => t.metadata?.ac === 'rwa' && t.metadata?.as === 'equity')
-      const other = parsed.filter(t => !(t.metadata?.ac === 'rwa' && t.metadata?.as === 'equity'))
-
-      setTokens(equity.length > 0 ? [...equity, ...other] : parsed)
-      setScanned(true)
-    } catch (err) {
-      console.error('Failed to fetch tokens:', err)
-      setScanned(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [client])
-
-  // Fetch when connected
   useEffect(() => {
-    if (status === 'connected') {
-      setScanned(false)
-      fetchTokens()
-    }
-  }, [status, fetchTokens])
+    setTokens(loadTokens())
+    setLoaded(true)
+  }, [])
+
+  if (!loaded) return null
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">Equity Tokens on Devnet</h2>
+          <h2 className="text-base font-semibold">Your Equity Tokens</h2>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            All MPT equity issuances on the XRP Ledger.
+            Tokens issued from this browser.
           </p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={fetchTokens} disabled={loading} className="btn-ghost text-xs">
-            {loading ? <span className="spinner-accent" /> : 'Refresh'}
-          </button>
         </div>
       </div>
 
-      {loading && !scanned && (
-        <div className="glass flex items-center justify-center py-12">
-          <span className="spinner-accent mr-3" />
-          <span className="text-sm text-[var(--text-secondary)]">Scanning ledger for equity tokens...</span>
-        </div>
-      )}
-
-      {scanned && tokens.length === 0 && (
+      {tokens.length === 0 && (
         <div className="glass text-center py-12">
           <p className="text-[var(--text-tertiary)] text-sm mb-4">
-            No equity tokens found on devnet yet.
+            No tokens issued yet.
           </p>
           <button onClick={onCreateNew} className="btn-primary">Issue First Token</button>
         </div>
@@ -152,7 +55,7 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
 
       {tokens.length > 0 && (
         <div className="space-y-3">
-          {tokens.map(token => (
+          {[...tokens].reverse().map(token => (
             <TokenCard key={token.mptIssuanceId} token={token} />
           ))}
         </div>
@@ -214,9 +117,10 @@ function TokenCard({ token }: { token: TokenEntry }) {
             <MiniBadge label="Clawback" on={!!(token.flags & 0x40)} />
           </div>
 
-          <p className="mono text-[10px] text-[var(--text-tertiary)] break-all pt-1">
-            Issuer: {token.issuer}
-          </p>
+          <div className="flex justify-between text-[10px] text-[var(--text-tertiary)] pt-1">
+            <span className="mono break-all">Issuer: {token.issuer}</span>
+            {token.createdAt && <span>{new Date(token.createdAt).toLocaleDateString()}</span>}
+          </div>
         </div>
       )}
     </div>
