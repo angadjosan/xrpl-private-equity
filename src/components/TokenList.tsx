@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { EquityMetadata } from '@/types'
 
-interface TokenEntry {
+export interface TokenEntry {
   mptIssuanceId: string
   issuer: string
   maxAmount: string
@@ -22,7 +22,7 @@ function loadTokens(): TokenEntry[] {
   }
 }
 
-export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) {
+export default function TokenList({ onCreateNew, onSelectToken }: { onCreateNew: () => void; onSelectToken?: (token: TokenEntry) => void }) {
   const [tokens, setTokens] = useState<TokenEntry[]>([])
   const [loaded, setLoaded] = useState(false)
 
@@ -39,7 +39,7 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
         <div>
           <h2 className="text-base font-semibold">Your Equity Tokens</h2>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            Tokens issued from this browser.
+            Tokens issued from this browser. Double-click to manage.
           </p>
         </div>
       </div>
@@ -56,7 +56,7 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
       {tokens.length > 0 && (
         <div className="space-y-3">
           {[...tokens].reverse().map(token => (
-            <TokenCard key={token.mptIssuanceId} token={token} />
+            <TokenCard key={token.mptIssuanceId} token={token} onSelect={onSelectToken} />
           ))}
         </div>
       )}
@@ -64,7 +64,7 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
   )
 }
 
-function TokenCard({ token }: { token: TokenEntry }) {
+function TokenCard({ token, onSelect }: { token: TokenEntry; onSelect?: (token: TokenEntry) => void }) {
   const [expanded, setExpanded] = useState(false)
   const ai = token.metadata?.ai as Record<string, string> | undefined
   const truncId = token.mptIssuanceId.length > 20
@@ -73,7 +73,10 @@ function TokenCard({ token }: { token: TokenEntry }) {
 
   return (
     <div className="glass-sm">
-      <button onClick={() => setExpanded(!expanded)} className="w-full text-left">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        onDoubleClick={() => onSelect?.(token)}
+        className="w-full text-left">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center flex-shrink-0">
@@ -117,9 +120,19 @@ function TokenCard({ token }: { token: TokenEntry }) {
             <MiniBadge label="Clawback" on={!!(token.flags & 0x40)} />
           </div>
 
-          <div className="flex justify-between text-[10px] text-[var(--text-tertiary)] pt-1">
+          <div className="flex justify-between items-center text-[10px] text-[var(--text-tertiary)] pt-1">
             <span className="mono break-all">Issuer: {token.issuer}</span>
-            {token.createdAt && <span>{new Date(token.createdAt).toLocaleDateString()}</span>}
+            <div className="flex items-center gap-3">
+              {token.createdAt && <span>{new Date(token.createdAt).toLocaleDateString()}</span>}
+              {onSelect && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSelect(token) }}
+                  className="text-[11px] font-medium text-[var(--accent)] hover:underline"
+                >
+                  Manage &rarr;
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
