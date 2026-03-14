@@ -1,4 +1,5 @@
-import { Client, type SubmittableTransaction } from 'xrpl'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Client, Wallet } from 'xrpl'
 
 const DEVNET_WSS = 'wss://s.devnet.rippletest.net:51233'
 
@@ -20,17 +21,46 @@ export async function disconnectClient() {
   client = null
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Submit a transaction bypassing xrpl.js local validation.
+ * xrpl.js autofill() rejects MPT amounts in Amount/TakerGets/TakerPays
+ * with "Amount can not be MPT", so we manually fill Fee, Sequence,
+ * LastLedgerSequence and sign+submit the raw blob.
+ */
 export async function submitTx(
   c: Client,
   tx: any,
   wallet: { seed: string },
 ) {
-  const { Wallet } = await import('xrpl')
   const w = Wallet.fromSeed(wallet.seed)
-  const prepared = await c.autofill(tx as SubmittableTransaction)
-  const signed = w.sign(prepared)
+
+  // Manually autofill the fields xrpl.js would normally set
+  if (!tx.Fee) tx.Fee = '12'
+  if (!tx.Sequence) {
+    const info = await c.request({
+      command: 'account_info',
+      account: w.address,
+      ledger_index: 'current',
+    })
+    tx.Sequence = info.result.account_data.Sequence
+  }
+  if (!tx.LastLedgerSequence) {
+    const ledger = await c.request({ command: 'ledger_current' })
+    tx.LastLedgerSequence = (ledger.result as any).ledger_current_index + 20
+  }
+  if (!tx.NetworkID) {
+    // Devnet requires NetworkID
+    try {
+      const serverInfo = await c.request({ command: 'server_info' })
+      const networkId = (serverInfo.result as any)?.info?.network_id
+      if (networkId && networkId > 1024) tx.NetworkID = networkId
+    } catch { /* non-critical */ }
+  }
+
+  // Sign without validation
+  const signed = w.sign(tx, false) // multisign=false
   const result = await c.submitAndWait(signed.tx_blob)
+
   const meta = result.result.meta as any
   if (meta && typeof meta === 'object' && 'TransactionResult' in meta) {
     const code = meta.TransactionResult as string
@@ -38,4 +68,3 @@ export async function submitTx(
   }
   return result
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */

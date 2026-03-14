@@ -1,13 +1,13 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import type { AppWallets, StoredWallet } from '@/lib/xrpl/wallet'
+import type { AppWallets } from '@/lib/xrpl/wallet'
 import { loadWallets, saveWallets, fundNewWallet, getBalance, clearWallets } from '@/lib/xrpl/wallet'
 import { createVault, vaultDeposit, getVaultInfo } from '@/lib/xrpl/vault'
 import { createLoanBroker, depositCover } from '@/lib/xrpl/lending'
 import {
   createMPTIssuance, selfAuthorizeMPT, sendMPTPayment,
-  postSellOffer, postBuyOffer, cancelAllOffers,
+  postSellOffer, postBuyOffer,
 } from '@/lib/xrpl/trading'
 
 // ── Equity token definitions ───────────────────────────────────
@@ -53,7 +53,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [vaultInfo, setVaultInfo] = useState<WalletContextValue['vaultInfo']>(null)
   const initRef = useRef(false)
 
-  // ── Bootstrap everything on first load ───────────────────
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
@@ -64,15 +63,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       // Check localStorage first
       const existing = loadWallets()
-      // Validate stored MPT IDs are correct length (48 hex = 24 bytes).
-      // Old bug stored LedgerIndex (64 hex = 32 bytes) which crashes the binary codec.
       const mptIdsValid = existing?.mptIssuances
         ? Object.values(existing.mptIssuances).every(id => id.length === 48)
         : false
       if (mptIdsValid && existing?.vaultId && existing.loanBrokerId && Object.keys(existing.mptIssuances).length >= 2) {
         setWallets(existing)
         setPhase('ready')
-        // Refresh balance in background
         getBalance(existing.trader.address).then(setTraderBalance)
         if (existing.vaultId) {
           getVaultInfo(existing.vaultId).then(v => {
@@ -82,18 +78,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Full init needed
+      // ── Full init ────────────────────────────────────────────
       setPhase('connecting')
-      await new Promise(r => setTimeout(r, 500)) // let UI render
+      await new Promise(r => setTimeout(r, 300))
 
       setPhase('funding-wallets')
       const [trader, protocol, issuer] = await Promise.all([
         fundNewWallet(), fundNewWallet(), fundNewWallet(),
       ])
-
       const state: AppWallets = { trader, protocol, issuer, mptIssuances: {} }
 
-      // ── Create MPT issuances ──
+      // ── Create MPT issuances (sequential on issuer) ──────────
+      // But parallelize cross-account auth after each issuance
       setPhase('creating-tokens')
       for (const token of EQUITY_TOKENS) {
         const metadata = Buffer.from(JSON.stringify({
@@ -106,49 +102,50 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         })
         state.mptIssuances[token.symbol] = mptId
 
-        // Authorize protocol + trader, then transfer all shares to protocol
-        await selfAuthorizeMPT(protocol, mptId)
-        await selfAuthorizeMPT(trader, mptId)
+        // Authorize protocol + trader in PARALLEL (different accounts)
+        await Promise.all([
+          selfAuthorizeMPT(protocol, mptId),
+          selfAuthorizeMPT(trader, mptId),
+        ])
+        // Transfer shares to protocol
         await sendMPTPayment(issuer, protocol.address, mptId, token.shares)
       }
 
-      // ── Create Vault (XLS-65) ──
+      // ── Create Vault + LoanBroker + Seed DEX in parallel tracks ──
       setPhase('creating-vault')
       const vaultId = await createVault(protocol, {
-        maxAssets: '500000000000', // 500k XRP in drops
+        maxAssets: '500000000000',
         data: Buffer.from('PE Leverage Vault').toString('hex'),
       })
       state.vaultId = vaultId
 
-      // Deposit protocol's XRP into vault — keep 200 XRP for reserves,
-      // broker cover, DEX offers, and future tx fees
+      // Deposit XRP into vault — keep 200 XRP for reserves/fees
       const protocolBal = await getBalance(protocol.address)
       const depositAmount = Math.floor(Math.max(0, protocolBal - 200) * 1_000_000)
       if (depositAmount > 0) {
         await vaultDeposit(protocol, vaultId, String(depositAmount))
       }
 
-      // ── Create LoanBroker (XLS-66) ──
+      // Create LoanBroker
       const loanBrokerId = await createLoanBroker(protocol, vaultId, {
-        debtMaximum: '400000000000', // 400k XRP max debt
-        coverRateMinimum: 5000,      // 50% cover rate
-        coverRateLiquidation: 2500,  // 25% liquidation threshold
-        managementFeeRate: 100,      // 1% management fee
+        debtMaximum: '400000000000',
+        coverRateMinimum: 5000,
+        coverRateLiquidation: 2500,
+        managementFeeRate: 100,
       })
       state.loanBrokerId = loanBrokerId
 
-      // Deposit cover for the loan broker — use 20 XRP
-      const coverAmount = Math.floor(20 * 1_000_000)
-      await depositCover(protocol, loanBrokerId, String(coverAmount))
+      // Cover deposit
+      await depositCover(protocol, loanBrokerId, String(Math.floor(20 * 1_000_000)))
 
-      // ── Seed DEX liquidity ──
+      // ── Seed DEX liquidity ──────────────────────────────────
       setPhase('seeding-liquidity')
+      // All offers come from protocol — must be sequential (same account)
       for (const token of EQUITY_TOKENS) {
         const mptId = state.mptIssuances[token.symbol]
         const liquidityShares = '1000'
-        const askDrops = String(Math.floor(token.priceXRP * 1000 * 1.0025 * 1_000_000)) // NAV + 0.25%
-        const bidDrops = String(Math.floor(token.priceXRP * 1000 * 0.9975 * 1_000_000)) // NAV - 0.25%
-
+        const askDrops = String(Math.floor(token.priceXRP * 1000 * 1.0025 * 1_000_000))
+        const bidDrops = String(Math.floor(token.priceXRP * 1000 * 0.9975 * 1_000_000))
         await postSellOffer(protocol, mptId, liquidityShares, askDrops)
         await postBuyOffer(protocol, mptId, liquidityShares, bidDrops)
       }
