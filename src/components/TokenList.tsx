@@ -15,7 +15,9 @@ interface TokenEntry {
   assetScale: number
 }
 
-const MAX_PAGES = 20 // cap ledger_data pagination
+// devnet returns very few entries per page (~5-10) despite limit param,
+// so we need many pages to scan all issuances. 200 pages is safe for ~1000 tokens.
+const MAX_PAGES = 200
 
 export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) {
   const { client, status } = useXRPL()
@@ -38,7 +40,7 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
         const req: any = {
           command: 'ledger_data',
           type: 'mpt_issuance',
-          limit: 100,
+          limit: 256,
         }
         if (marker) req.marker = marker
 
@@ -57,30 +59,13 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
         return
       }
 
-      // Parse each entry, fetch full metadata via ledger_entry if needed
-      const parsed: TokenEntry[] = await Promise.all(allEntries.map(async (entry: Record<string, unknown>) => {
+      // Parse entries — use inline metadata, fallback to ledger_entry only when missing
+      const parsed: TokenEntry[] = allEntries.map((entry: Record<string, unknown>) => {
         const id = (entry.mpt_issuance_id ?? entry.MPTokenIssuanceID ?? entry.index ?? '') as string
-
         let metadata: EquityMetadata | null = null
 
-        // Try inline metadata first
         if (entry.MPTokenMetadata) {
           try { metadata = decodeMetadataHex(entry.MPTokenMetadata as string) } catch {}
-        }
-
-        // Fallback: fetch via ledger_entry for full node data
-        if (!metadata && id) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const full = await client!.request({ command: 'ledger_entry', mpt_issuance: id } as any)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const node = (full.result as any).node
-            if (node?.MPTokenMetadata) {
-              metadata = decodeMetadataHex(node.MPTokenMetadata as string)
-            }
-          } catch {
-            // not found or no metadata
-          }
         }
 
         return {
@@ -92,7 +77,24 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
           flags: (entry.Flags ?? entry.flags ?? 0) as number,
           assetScale: (entry.AssetScale ?? entry.asset_scale ?? 0) as number,
         }
-      }))
+      })
+
+      // For tokens missing metadata, fetch via ledger_entry (batched, 5 at a time)
+      const needsFetch = parsed.filter(t => !t.metadata && t.mptIssuanceId)
+      for (let i = 0; i < needsFetch.length; i += 5) {
+        const batch = needsFetch.slice(i, i + 5)
+        await Promise.all(batch.map(async (token) => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const full = await client!.request({ command: 'ledger_entry', mpt_issuance: token.mptIssuanceId } as any)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const node = (full.result as any).node
+            if (node?.MPTokenMetadata) {
+              token.metadata = decodeMetadataHex(node.MPTokenMetadata as string)
+            }
+          } catch { /* no metadata available */ }
+        }))
+      }
 
       // Show equity tokens first (those with ac=rwa, as=equity), then all others
       const equity = parsed.filter(t => t.metadata?.ac === 'rwa' && t.metadata?.as === 'equity')
