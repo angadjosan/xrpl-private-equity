@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { -webkit-font-smoothing: antialiased; }
+
+body {
+  background: #0b0e11;
+  color: #e8eaed;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+::selection { background: rgba(99,102,241,0.3); }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+
+@layer components {
+  .cell { @apply font-mono text-xs tabular-nums; }
+  .cell-green { @apply cell text-bull; }
+  .cell-red { @apply cell text-bear; }
+  .panel { @apply bg-bg-secondary border-r border-bg-border; }
+  .panel-section { @apply px-3 py-2.5 border-b border-bg-border; }
+  .tab-btn { @apply px-2.5 py-1 text-[11px] font-medium rounded transition-colors text-txt-tertiary hover:text-txt-secondary; }
+  .tab-btn-active { @apply tab-btn bg-white/[0.06] text-txt-primary; }
+  .input-dark { @apply bg-bg-tertiary border border-bg-border rounded px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-accent/50 w-full font-mono; }
+  .btn-buy { @apply w-full py-2 rounded font-medium text-sm bg-bull text-white hover:brightness-110 transition-all; }
+  .btn-sell { @apply w-full py-2 rounded font-medium text-sm bg-bear text-white hover:brightness-110 transition-all; }
+  .btn-ghost { @apply px-3 py-1.5 text-xs font-medium rounded text-txt-tertiary hover:text-txt-primary hover:bg-white/[0.04] transition-colors; }
+}
