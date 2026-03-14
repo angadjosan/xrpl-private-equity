@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useToken } from '@/hooks/useToken'
 import { PROOF_TYPES } from '@/types'
 import FinancialsForm from './FinancialsForm'
+import CashflowPanel from './CashflowPanel'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
@@ -117,6 +118,9 @@ export default function ShareManager() {
           <RuleBadge label="Clawback" on={!!(token.flags & 0x40)} />
         </div>
       </div>
+
+      {/* Cashflow Distribution */}
+      <CashflowPanel />
 
       <button onClick={() => setShowFinancials(true)} className="btn-primary w-full py-3.5 text-[15px]">
         Add Company Financials
