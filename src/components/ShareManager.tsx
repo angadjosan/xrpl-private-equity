@@ -9,6 +9,7 @@ import RegisterShares from './RegisterShares'
 import VerifierDashboard from './VerifierDashboard'
 import NAVSync from './NAVSync'
 import EarningsReport from './EarningsReport'
+import CashflowPanel from './CashflowPanel'
 
 type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'nav' | 'earnings'
 
@@ -141,6 +142,9 @@ export default function ShareManager() {
           </div>
         </div>
       )}
+
+      {/* Cashflow Distribution */}
+      <CashflowPanel />
 
       {/* Token Identity */}
       <div className="glass space-y-4">
