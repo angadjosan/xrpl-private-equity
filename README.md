@@ -2,6 +2,8 @@
 
 Tokenize private company shares on the XRP Ledger. Issue equity as Multi-Purpose Tokens, custody shares in Token Escrow, verify ownership with on-chain credentials, distribute cashflows to holders, and trade on the native DEX — all without a backend.
 
+You can leverage MPTs from private companies on this trading platform. MPTs get verified through a 14-day period from external verifiers. Investors get cashflow (dividends) from private companies they invest in through this platform, which is modeled in the UI. There's a terminal that allows you to manage your protfolio by looking at DCF (influenced by Liquid trading interface). 
+
 > **Built for the Ripple Track hackathon.** Runs entirely on XRPL Devnet. No backend, no database — every operation is an on-chain transaction.
 
 ---
