@@ -7,7 +7,7 @@ export interface Asset {
   openInterest: number
   funding: number
   countdown: string
-  isXRPLEquity?: boolean // true if this is an XRPL equity token from our protocol
+  isXRPLEquity?: boolean
   xrplMetadata?: XRPLEquityMeta
 }
 
@@ -39,6 +39,10 @@ export interface Holding {
   entryPrice: number
   markPrice: number
   openedAt: number
+  // On-chain references (for leveraged positions)
+  loanId?: string
+  mptIssuanceId?: string
+  shares?: number
 }
 
 export interface Portfolio {
@@ -49,7 +53,6 @@ export interface Portfolio {
   realizedPnl: number
   equityCurve: { timestamp: number; value: number }[]
   holdings: Holding[]
-  // PE metrics
   committedCapital: number
   calledCapital: number
   distributedCapital: number
@@ -72,7 +75,30 @@ export interface OrderState {
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D'
 export type EquityRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y'
 
-// ─── Computed helpers ────────────────────────────────────────
+// ─── Vault & Lending types ────────────────────────────────────
+
+export interface VaultState {
+  vaultId: string
+  assetsTotal: number
+  assetsAvailable: number
+  shareMptId: string
+}
+
+export interface LeveragedPosition {
+  id: string
+  symbol: string
+  mptIssuanceId: string
+  leverage: number
+  direction: 'long' | 'short'
+  margin: number         // XRP deposited as margin
+  borrowed: number       // XRP borrowed from vault
+  shares: number         // MPT shares acquired
+  entryPrice: number     // XRP per share at entry
+  loanId: string         // on-chain loan reference
+  openedAt: number
+}
+
+// ─── Computed helpers ─────────────────────────────────────────
 
 export function holdingPnl(h: Holding): number {
   const dir = h.direction === 'long' ? 1 : -1
@@ -89,29 +115,24 @@ export function holdingROI(h: Holding): number {
   return margin > 0 ? (pnl / margin) * 100 : 0
 }
 
-// IRR: annualized return
 export function computeIRR(initial: number, current: number, daysElapsed: number): number {
   if (daysElapsed <= 0 || initial <= 0) return 0
   const r = (current - initial) / initial
   return (Math.pow(1 + r, 365 / daysElapsed) - 1) * 100
 }
 
-// MOIC: multiple on invested capital
 export function computeMOIC(totalValue: number, calledCapital: number): number {
   return calledCapital > 0 ? totalValue / calledCapital : 0
 }
 
-// DPI: distributions to paid-in capital
 export function computeDPI(distributed: number, calledCapital: number): number {
   return calledCapital > 0 ? distributed / calledCapital : 0
 }
 
-// RVPI: residual value to paid-in
 export function computeRVPI(nav: number, calledCapital: number): number {
   return calledCapital > 0 ? nav / calledCapital : 0
 }
 
-// TVPI: total value to paid-in (DPI + RVPI)
 export function computeTVPI(totalValue: number, distributed: number, calledCapital: number): number {
   return calledCapital > 0 ? (totalValue + distributed) / calledCapital : 0
 }
