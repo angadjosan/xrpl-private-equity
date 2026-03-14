@@ -8,8 +8,9 @@ import FinancialsForm from './FinancialsForm'
 import RegisterShares from './RegisterShares'
 import VerifierDashboard from './VerifierDashboard'
 import NAVSync from './NAVSync'
+import EarningsReport from './EarningsReport'
 
-type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'nav'
+type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'nav' | 'earnings'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
@@ -40,6 +41,9 @@ export default function ShareManager() {
   }
   if (subView === 'nav') {
     return <NAVSync onBack={() => setSubView('overview')} />
+  }
+  if (subView === 'earnings') {
+    return <EarningsReport onBack={() => setSubView('overview')} />
   }
 
   const pendingCount = registrations.filter(r => r.status === 'pending').length
@@ -97,6 +101,16 @@ export default function ShareManager() {
           </div>
           <p className="text-sm font-medium">Add Financials</p>
           <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">DCF data for PE terminal</p>
+        </button>
+
+        <button onClick={() => setSubView('earnings')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group py-5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-2">
+            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">Earnings Report</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Reports & DCF valuation</p>
         </button>
 
         <button onClick={() => setSubView('nav')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group py-5">

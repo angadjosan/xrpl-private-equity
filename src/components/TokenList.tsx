@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useXRPL } from '@/hooks/useXRPL'
+import { useWallet } from '@/hooks/useWallet'
 import { decodeMetadataHex } from '@/lib/metadata'
 import type { EquityMetadata } from '@/types'
 
@@ -17,39 +18,39 @@ interface TokenEntry {
 
 export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) {
   const { client, status } = useXRPL()
+  const { wallets } = useWallet()
   const [tokens, setTokens] = useState<TokenEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [scanned, setScanned] = useState(false)
 
+  const issuerAddress = wallets.issuer?.address
+
   const fetchTokens = useCallback(async () => {
-    if (!client?.isConnected()) return
+    if (!client?.isConnected() || !issuerAddress) return
     setLoading(true)
     try {
-      // Use account_objects scoped to the connected issuer account instead of
-      // ledger_data which scans EVERY MPT issuance on the entire devnet.
-      // Also accept an optional issuer address prop — if not available, fall
-      // back to the (faster, bounded) ledger_data scan with a low page cap.
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allEntries: Record<string, unknown>[] = []
-      let marker: unknown = undefined
-      const MAX_PAGES = 5 // safety cap — stop after 500 entries
 
-      let pages = 0
+      // Fetch only this issuer's MPT issuances via account_objects
+      let marker: unknown = undefined
       do {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const req: any = { command: 'ledger_data', type: 'mpt_issuance', limit: 100 }
+        const req: any = {
+          command: 'account_objects',
+          account: issuerAddress,
+          type: 'mpt_issuance',
+          limit: 100,
+        }
         if (marker) req.marker = marker
 
         const response = await client.request(req)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = response.result as any
-        const state = result.state as any[] | undefined
-
-        if (state) allEntries.push(...state)
+        const objects = result.account_objects as any[] | undefined
+        if (objects) allEntries.push(...objects)
         marker = result.marker
-        pages++
-      } while (marker && pages < MAX_PAGES)
+      } while (marker)
 
       if (allEntries.length === 0) {
         setTokens([])
@@ -57,33 +58,42 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
         return
       }
 
-      const parsed: TokenEntry[] = allEntries.map((entry: Record<string, unknown>) => {
+      // For each entry, try to get full metadata via ledger_entry
+      const parsed: TokenEntry[] = await Promise.all(allEntries.map(async (entry: Record<string, unknown>) => {
+        const id = (entry.mpt_issuance_id ?? entry.MPTokenIssuanceID ?? entry.index ?? '') as string
+
         let metadata: EquityMetadata | null = null
-        try {
-          if (entry.MPTokenMetadata) {
-            metadata = decodeMetadataHex(entry.MPTokenMetadata as string)
+
+        if (entry.MPTokenMetadata) {
+          try { metadata = decodeMetadataHex(entry.MPTokenMetadata as string) } catch {}
+        }
+
+        if (!metadata && id) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const full = await client!.request({ command: 'ledger_entry', mpt_issuance: id } as any)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const node = (full.result as any).node
+            if (node?.MPTokenMetadata) {
+              metadata = decodeMetadataHex(node.MPTokenMetadata as string)
+            }
+          } catch {
+            // not found or no metadata
           }
-        } catch {
-          // invalid metadata, skip
         }
 
         return {
-          mptIssuanceId: (entry.MPTokenIssuanceID ?? entry.index ?? '') as string,
-          issuer: entry.Issuer as string,
+          mptIssuanceId: id,
+          issuer: (entry.Issuer as string) ?? issuerAddress ?? '',
           maxAmount: (entry.MaximumAmount as string) ?? '0',
           outstanding: (entry.OutstandingAmount as string) ?? '0',
           metadata,
           flags: (entry.Flags as number) ?? 0,
           assetScale: (entry.AssetScale as number) ?? 0,
         }
-      })
+      }))
 
-      // Filter to only show equity tokens (ac=rwa, as=equity)
-      const equityTokens = parsed.filter(t =>
-        t.metadata?.ac === 'rwa' && t.metadata?.as === 'equity'
-      )
-
-      setTokens(equityTokens)
+      setTokens(parsed)
       setScanned(true)
     } catch (err) {
       console.error('Failed to fetch tokens:', err)
@@ -91,21 +101,23 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
     } finally {
       setLoading(false)
     }
-  }, [client])
+  }, [client, issuerAddress])
 
+  // Re-fetch when connected and issuer address becomes available (or changes)
   useEffect(() => {
-    if (status === 'connected' && !scanned) {
+    if (status === 'connected' && issuerAddress) {
+      setScanned(false)
       fetchTokens()
     }
-  }, [status, scanned, fetchTokens])
+  }, [status, issuerAddress, fetchTokens])
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">Equity Tokens on Devnet</h2>
+          <h2 className="text-base font-semibold">Your Equity Tokens</h2>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            RWA equity tokens found on the XRP Ledger devnet.
+            MPT issuances from your issuer wallet on devnet.
           </p>
         </div>
         <div className="flex gap-2">
@@ -118,13 +130,15 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
       {loading && !scanned && (
         <div className="glass flex items-center justify-center py-12">
           <span className="spinner-accent mr-3" />
-          <span className="text-sm text-[var(--text-secondary)]">Scanning devnet...</span>
+          <span className="text-sm text-[var(--text-secondary)]">Loading your tokens...</span>
         </div>
       )}
 
       {scanned && tokens.length === 0 && (
         <div className="glass text-center py-12">
-          <p className="text-[var(--text-tertiary)] text-sm mb-4">No equity tokens found on devnet.</p>
+          <p className="text-[var(--text-tertiary)] text-sm mb-4">
+            {wallets.issuer ? 'No tokens issued yet from your wallet.' : 'Connect a wallet to see your tokens.'}
+          </p>
           <button onClick={onCreateNew} className="btn-primary">Issue First Token</button>
         </div>
       )}
