@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Asset, OrderBook, Trade, Candle, Portfolio, Holding, Timeframe } from '@/types'
 import { holdingPnl, holdingMargin } from '@/types'
-import { buildAssets, mockOrderBook, mockTrades, mockCandles, tickAssets } from '@/lib/mock'
+import { buildAssets, mockOrderBook, mockTrades, mockCandles } from '@/lib/mock'
 import { fetchCryptoPrices } from '@/lib/prices'
 import TopNav from '@/components/TopNav'
 import Sidebar from '@/components/Sidebar'
@@ -13,14 +13,16 @@ import OrderPanel from '@/components/OrderPanel'
 const INITIAL_CAPITAL = 100_000
 const FAVORITES = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP', 'GOLD-PERP', 'AAPL-PERP', 'ACME-PERP']
 
-// Memoize heavy components
-const MemoSidebar = memo(Sidebar)
-const MemoChart = memo(ChartPanel)
-const MemoOrderPanel = memo(OrderPanel)
+// Crypto symbols that CoinGecko can price
+const CRYPTO_SYMS = new Set(['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'AVAX', 'LINK', 'MATIC'])
 
 export default function Terminal() {
+  // Full asset list — built once, refreshed only on real price fetch
   const [assets, setAssets] = useState<Asset[]>([])
-  const [activeSymbol, setActiveSymbol] = useState('BTC-PERP')
+  // Active asset — the ONLY thing that ticks frequently
+  const [activeAsset, setActiveAsset] = useState<Asset | null>(null)
+  const activeSymbolRef = useRef('BTC-PERP')
+
   const [timeframe, setTimeframe] = useState<Timeframe>('1m')
   const [orderBook, setOrderBook] = useState<OrderBook>({ bids: [], asks: [] })
   const [trades, setTrades] = useState<Trade[]>([])
@@ -32,109 +34,137 @@ export default function Terminal() {
     vintageYear: 2025, managementFeePct: 0.02, carriedInterestPct: 0.20,
   })
 
-  const realPricesRef = useRef<Map<string, { price: number; change: number; changePct: number; volume: number }>>(new Map())
-  const initialized = useRef(false)
+  const realPricesRef = useRef(new Map<string, { price: number; change: number; changePct: number; volume: number }>())
+  const assetsRef = useRef<Asset[]>([])
 
-  // ─── Fetch real crypto prices from CoinGecko ───
+  // ─── Load real prices + build assets (once) ───
   useEffect(() => {
-    const fetchPrices = async () => {
+    const init = async () => {
       const prices = await fetchCryptoPrices()
       const map = new Map<string, { price: number; change: number; changePct: number; volume: number }>()
-      for (const p of prices) {
-        map.set(p.symbol, { price: p.price, change: p.change24h, changePct: p.changePct24h, volume: p.volume24h })
-      }
+      for (const p of prices) map.set(p.symbol, { price: p.price, change: p.change24h, changePct: p.changePct24h, volume: p.volume24h })
       realPricesRef.current = map
 
-      // On first load, initialize assets with real prices
-      if (!initialized.current) {
-        initialized.current = true
-        const a = buildAssets(map)
-        setAssets(a)
-        const active = a.find(x => x.symbol === 'BTC-PERP') ?? a[0]
-        setOrderBook(mockOrderBook(active.price))
-        setTrades(mockTrades(active.price))
-        setCandles(mockCandles(active.price))
-      }
+      const a = buildAssets(map)
+      assetsRef.current = a
+      setAssets(a) // one render for the full list
+      const active = a.find(x => x.symbol === 'BTC-PERP') ?? a[0]
+      setActiveAsset(active)
+      setOrderBook(mockOrderBook(active.price))
+      setTrades(mockTrades(active.price))
+      setCandles(mockCandles(active.price))
     }
+    init()
+  }, [])
 
-    fetchPrices()
-    const interval = setInterval(fetchPrices, 15_000) // refresh every 15s
+  // ─── Refresh real prices every 30s — update asset list ───
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const prices = await fetchCryptoPrices()
+      const map = new Map<string, { price: number; change: number; changePct: number; volume: number }>()
+      for (const p of prices) map.set(p.symbol, { price: p.price, change: p.change24h, changePct: p.changePct24h, volume: p.volume24h })
+      realPricesRef.current = map
+
+      // Update full asset list with new real prices (infrequent, ~30s)
+      setAssets(prev => prev.map(a => {
+        const sym = a.symbol.replace('-PERP', '')
+        const real = map.get(sym)
+        if (real) return { ...a, price: real.price, change24h: real.change, changePct24h: real.changePct, volume24h: real.volume }
+        return a
+      }))
+    }, 30_000)
     return () => clearInterval(interval)
   }, [])
 
-  // ─── Price tick every 3s (not 1s — less jank) ───
+  // ─── Tick ONLY the active asset every 2s ───
   useEffect(() => {
     const interval = setInterval(() => {
-      setAssets(prev => {
-        if (prev.length === 0) return prev
-        const ticked = tickAssets(prev, realPricesRef.current)
+      setActiveAsset(prev => {
+        if (!prev) return prev
+        const sym = prev.symbol.replace('-PERP', '')
+        const real = realPricesRef.current.get(sym)
 
-        // Update portfolio holdings
-        setPortfolio(p => {
-          if (p.holdings.length === 0) return p
-          const updated = p.holdings.map(h => {
-            const a = ticked.find(x => x.symbol === h.symbol)
-            return a ? { ...h, markPrice: a.price } : h
-          })
-          const unrealized = updated.reduce((s, h) => s + holdingPnl(h), 0)
-          const margin = updated.reduce((s, h) => s + holdingMargin(h), 0)
-          const tv = p.initialCapital + p.realizedPnl + unrealized
-          const curve = [...p.equityCurve]
-          if (Date.now() - (curve[curve.length - 1]?.timestamp ?? 0) > 10000) {
-            curve.push({ timestamp: Date.now(), value: tv })
-            if (curve.length > 300) curve.shift()
-          }
-          return { ...p, holdings: updated, totalValueUSD: tv, availableUSD: Math.max(0, tv - margin),
-            pnlTodayPct: p.initialCapital > 0 ? ((tv - p.initialCapital) / p.initialCapital) * 100 : 0, equityCurve: curve }
-        })
+        let newPrice: number
+        if (real) {
+          // Real price with micro-jitter for live feel
+          newPrice = real.price * (1 + (Math.random() - 0.5) * 0.0002)
+        } else {
+          // Simulated tick
+          newPrice = prev.price * (1 + (Math.random() - 0.5) * 0.0004)
+        }
 
-        return ticked
+        if (Math.abs(newPrice - prev.price) / prev.price < 0.000001) return prev // skip if no meaningful change
+        return { ...prev, price: newPrice }
       })
-    }, 3000)
+
+      // Update holding mark prices (only for holdings matching active asset)
+      setPortfolio(p => {
+        if (p.holdings.length === 0) return p
+        let changed = false
+        const updated = p.holdings.map(h => {
+          if (h.symbol === activeSymbolRef.current) {
+            // Use the active asset's latest price
+            const a = assetsRef.current.find(x => x.symbol === h.symbol)
+            const real = realPricesRef.current.get(h.symbol.replace('-PERP', ''))
+            const newMark = real?.price ?? a?.price ?? h.markPrice
+            if (newMark !== h.markPrice) { changed = true; return { ...h, markPrice: newMark } }
+          }
+          return h
+        })
+        if (!changed) return p
+        const unrealized = updated.reduce((s, h) => s + holdingPnl(h), 0)
+        const margin = updated.reduce((s, h) => s + holdingMargin(h), 0)
+        const tv = p.initialCapital + p.realizedPnl + unrealized
+        return { ...p, holdings: updated, totalValueUSD: tv, availableUSD: Math.max(0, tv - margin),
+          pnlTodayPct: p.initialCapital > 0 ? ((tv - p.initialCapital) / p.initialCapital) * 100 : 0 }
+      })
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // ─── Equity curve — append every 30s (very cheap) ───
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPortfolio(p => {
+        const curve = [...p.equityCurve, { timestamp: Date.now(), value: p.totalValueUSD }]
+        if (curve.length > 200) curve.shift()
+        return { ...p, equityCurve: curve }
+      })
+    }, 30_000)
     return () => clearInterval(interval)
   }, [])
 
   const switchAsset = useCallback((sym: string) => {
-    setActiveSymbol(sym)
-    setAssets(prev => {
-      const a = prev.find(x => x.symbol === sym)
-      if (a) {
-        setOrderBook(mockOrderBook(a.price))
-        setTrades(mockTrades(a.price))
-        setCandles(mockCandles(a.price))
-      }
-      return prev
-    })
+    activeSymbolRef.current = sym
+    const a = assetsRef.current.find(x => x.symbol === sym)
+    if (a) {
+      setActiveAsset(a)
+      setOrderBook(mockOrderBook(a.price))
+      setTrades(mockTrades(a.price))
+      setCandles(mockCandles(a.price))
+    }
   }, [])
 
   const switchTimeframe = useCallback((tf: Timeframe) => {
     setTimeframe(tf)
-    setAssets(prev => {
-      const a = prev.find(x => x.symbol === activeSymbol)
-      if (a) setCandles(mockCandles(a.price))
-      return prev
-    })
-  }, [activeSymbol])
+    const a = assetsRef.current.find(x => x.symbol === activeSymbolRef.current)
+    if (a) setCandles(mockCandles(a.price))
+  }, [])
 
   const openPosition = useCallback((symbol: string, side: 'buy' | 'sell', sizeUSD: number, leverage: number) => {
-    setAssets(prev => {
-      const asset = prev.find(a => a.symbol === symbol)
-      if (!asset) return prev
-      setPortfolio(p => {
-        const margin = sizeUSD / leverage
-        if (p.availableUSD < margin) return p
-        const h: Holding = {
-          id: crypto.randomUUID(), symbol, leverage,
-          direction: side === 'buy' ? 'long' : 'short',
-          notional: sizeUSD, entryPrice: asset.price, markPrice: asset.price, openedAt: Date.now(),
-        }
-        const holdings = [...p.holdings, h]
-        const tm = holdings.reduce((s, x) => s + holdingMargin(x), 0)
-        const ur = holdings.reduce((s, x) => s + holdingPnl(x), 0)
-        const tv = p.initialCapital + p.realizedPnl + ur
-        return { ...p, holdings, totalValueUSD: tv, availableUSD: Math.max(0, tv - tm) }
-      })
-      return prev
+    const asset = assetsRef.current.find(a => a.symbol === symbol)
+    if (!asset) return
+    setPortfolio(p => {
+      const margin = sizeUSD / leverage
+      if (p.availableUSD < margin) return p
+      const h: Holding = {
+        id: crypto.randomUUID(), symbol, leverage,
+        direction: side === 'buy' ? 'long' : 'short',
+        notional: sizeUSD, entryPrice: asset.price, markPrice: asset.price, openedAt: Date.now(),
+      }
+      const holdings = [...p.holdings, h]
+      const tm = holdings.reduce((s, x) => s + holdingMargin(x), 0)
+      return { ...p, holdings, availableUSD: Math.max(0, p.totalValueUSD - tm) }
     })
   }, [])
 
@@ -164,18 +194,17 @@ export default function Terminal() {
     })
   }, [])
 
-  const activeAsset = assets.find(a => a.symbol === activeSymbol) ?? assets[0]
   if (!activeAsset) return <div className="h-screen bg-bg-primary flex items-center justify-center text-txt-tertiary text-sm">Fetching prices...</div>
 
   return (
     <div className="h-screen flex flex-col bg-bg-primary">
       <TopNav assets={assets} active={activeAsset} onSelect={switchAsset} favorites={FAVORITES} />
       <div className="flex-1 flex min-h-0">
-        <MemoSidebar portfolio={portfolio} onClosePosition={closePosition} onCloseAll={closeAll} />
+        <Sidebar portfolio={portfolio} onClosePosition={closePosition} onCloseAll={closeAll} />
         <div className="flex-1 flex flex-col min-w-0">
-          <MemoChart candles={candles} activeAsset={activeAsset} timeframe={timeframe} onTimeframeChange={switchTimeframe} />
+          <ChartPanel candles={candles} activeAsset={activeAsset} timeframe={timeframe} onTimeframeChange={switchTimeframe} />
         </div>
-        <MemoOrderPanel orderBook={orderBook} trades={trades} activeAsset={activeAsset} portfolio={portfolio} onPlaceOrder={openPosition} />
+        <OrderPanel orderBook={orderBook} trades={trades} activeAsset={activeAsset} portfolio={portfolio} onPlaceOrder={openPosition} />
       </div>
     </div>
   )
