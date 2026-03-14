@@ -31,7 +31,7 @@ const defaultForm: CreateTokenForm = {
 
 export default function CreateForm() {
   const { client, status } = useXRPL()
-  const { ensureWallets, wallets } = useWallet()
+  const { ensureWallets } = useWallet()
   const { setMPTIssuanceId, setMetadata, setTotalShares, setFlags } = useToken()
   const [form, setForm] = useState<CreateTokenForm>(defaultForm)
   const [phase, setPhase] = useState<DeployPhase>(null)
@@ -58,31 +58,14 @@ export default function CreateForm() {
     setError(null)
 
     try {
-      // Auto-provision wallets
+      // Auto-provision wallets — returns them directly (no stale closure)
       setPhase('wallets')
-      const ready = await ensureWallets()
-      if (!ready) throw new Error('Could not create accounts. Check your connection.')
+      const result = await ensureWallets()
+      if (!result) throw new Error('Could not create accounts. Check your connection.')
+      const { issuer, protocol } = result
 
-      // Need a small delay for state to propagate
-      // Get wallets directly since state may not have updated yet
-      await new Promise(r => setTimeout(r, 100))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to set up accounts')
-      setPhase(null)
-      return
-    }
-
-    // Re-check wallets after provisioning
-    if (!wallets.issuer || !wallets.protocol) {
-      // Wait a tick for state
-      await new Promise(r => setTimeout(r, 500))
-    }
-
-    try {
       const flagsValue = computeFlags(form.flagSelections)
       const metadataHex = encodeMetadataHex(metadata)
-      const issuer = wallets.issuer!
-      const protocol = wallets.protocol!
 
       // Create issuance
       setPhase('creating')

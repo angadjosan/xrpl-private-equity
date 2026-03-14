@@ -7,8 +7,8 @@ import type { WalletState } from '@/types'
 
 interface WalletContextValue {
   wallets: WalletState
-  /** Ensures issuer + protocol wallets exist, auto-creates if not. Returns true if ready. */
-  ensureWallets: () => Promise<boolean>
+  /** Ensures issuer + protocol wallets exist, returns them directly (no stale closure). */
+  ensureWallets: () => Promise<{ issuer: Wallet; protocol: Wallet } | null>
   addShareholder: () => Promise<Wallet | null>
   removeShareholder: (index: number) => void
   provisioning: boolean
@@ -16,7 +16,7 @@ interface WalletContextValue {
 
 export const WalletContext = createContext<WalletContextValue>({
   wallets: { issuer: null, protocol: null, shareholders: [] },
-  ensureWallets: async () => false,
+  ensureWallets: async () => null,
   addShareholder: async () => null,
   removeShareholder: () => {},
   provisioning: false,
@@ -30,7 +30,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     shareholders: [],
   })
   const [provisioning, setProvisioning] = useState(false)
-  const provisioningRef = useRef(false)
+  const walletsRef = useRef(wallets)
+  walletsRef.current = wallets
 
   const fundNewWallet = useCallback(async (): Promise<Wallet | null> => {
     if (!client?.isConnected()) return null
@@ -43,35 +44,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [client])
 
-  // Silently provisions issuer + protocol wallets if they don't exist
-  const ensureWallets = useCallback(async (): Promise<boolean> => {
-    if (provisioningRef.current) return false
-    provisioningRef.current = true
+  const ensureWallets = useCallback(async (): Promise<{ issuer: Wallet; protocol: Wallet } | null> => {
     setProvisioning(true)
-
     try {
-      let currentWallets = wallets
+      let issuer = walletsRef.current.issuer
+      let protocol = walletsRef.current.protocol
 
-      if (!currentWallets.issuer) {
-        const issuer = await fundNewWallet()
-        if (!issuer) return false
-        currentWallets = { ...currentWallets, issuer }
+      if (!issuer) {
+        issuer = await fundNewWallet()
+        if (!issuer) return null
         setWallets(prev => ({ ...prev, issuer }))
       }
 
-      if (!currentWallets.protocol) {
-        const protocol = await fundNewWallet()
-        if (!protocol) return false
-        currentWallets = { ...currentWallets, protocol }
+      if (!protocol) {
+        protocol = await fundNewWallet()
+        if (!protocol) return null
         setWallets(prev => ({ ...prev, protocol }))
       }
 
-      return true
+      return { issuer, protocol }
     } finally {
       setProvisioning(false)
-      provisioningRef.current = false
     }
-  }, [wallets, fundNewWallet])
+  }, [fundNewWallet])
 
   const addShareholder = useCallback(async (): Promise<Wallet | null> => {
     const wallet = await fundNewWallet()
