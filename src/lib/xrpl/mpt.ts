@@ -54,7 +54,8 @@ export async function createMPTIssuance(
  * @throws Error if ID cannot be extracted from metadata
  */
 export function extractMPTIssuanceID(result: TxResponse): string {
-  const meta = result.result.meta as Record<string, unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = result.result.meta as any
   if (typeof meta === 'object' && meta !== null) {
     // Check for mpt_issuance_id directly on meta (some xrpl.js versions)
     if (meta.mpt_issuance_id) {
@@ -80,7 +81,8 @@ export function extractMPTIssuanceID(result: TxResponse): string {
   }
 
   // Fallback: construct from account + sequence (for debugging/dev)
-  const txResult = result.result as Record<string, unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const txResult = result.result as any
   const account = txResult.Account as string
   const sequence = txResult.Sequence as number
   throw new Error(

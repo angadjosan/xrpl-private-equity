@@ -106,7 +106,8 @@ export async function submitWithRetry(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await client.submitAndWait(tx, { wallet })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await client.submitAndWait(tx as any, { wallet })
       return result
     } catch (error) {
       lastError = error

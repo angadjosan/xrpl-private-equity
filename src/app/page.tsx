@@ -1,103 +1,153 @@
 'use client'
 
+import { useState } from 'react'
 import { useXRPL } from '@/hooks/useXRPL'
 import { useWallet } from '@/hooks/useWallet'
 import { useToken } from '@/hooks/useToken'
-import WalletConnect from '@/components/WalletConnect'
-import { truncateAddress } from '@/utils/format'
-import Link from 'next/link'
+import TopBar from '@/components/TopBar'
+import SetupPanel from '@/components/SetupPanel'
+import IssuePanel from '@/components/IssuePanel'
+import ClaimPanel from '@/components/ClaimPanel'
+import ActivityLog from '@/components/ActivityLog'
 
-export default function Dashboard() {
+export type AppStep = 'setup' | 'issue' | 'claim'
+
+export interface LogEntry {
+  id: string
+  time: Date
+  message: string
+  type: 'info' | 'success' | 'error' | 'pending'
+  hash?: string
+}
+
+export default function Home() {
   const { status } = useXRPL()
   const { wallets } = useWallet()
   const { token } = useToken()
+  const [activeStep, setActiveStep] = useState<AppStep>('setup')
+  const [logs, setLogs] = useState<LogEntry[]>([])
+
+  const addLog = (message: string, type: LogEntry['type'] = 'info', hash?: string) => {
+    setLogs(prev => [{
+      id: crypto.randomUUID(),
+      time: new Date(),
+      message,
+      type,
+      hash,
+    }, ...prev])
+  }
+
+  // Determine which steps are accessible
+  const walletsReady = !!wallets.issuer && !!wallets.protocol
+  const tokenReady = !!token.mptIssuanceId
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white">XRPL Private Equity Protocol</h1>
-        <p className="text-gray-400 mt-2">
-          Tokenize private company shares as Multi-Purpose Tokens on the XRP Ledger.
-        </p>
-      </div>
+    <div className="min-h-screen">
+      <TopBar status={status} />
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card">
-          <h3 className="text-sm text-gray-400">Network</h3>
-          <p className="text-xl font-semibold text-white mt-1">Devnet</p>
-          <p className={`text-sm mt-1 ${status === 'connected' ? 'text-green-400' : 'text-yellow-400'}`}>
-            {status}
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="mb-12">
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--text-primary)]">
+            Equity Protocol
+          </h1>
+          <p className="text-[var(--text-secondary)] mt-2 text-base">
+            Tokenize private shares as MPTs on the XRP Ledger. Issue tokens, escrow shares, claim ownership.
           </p>
         </div>
-        <div className="card">
-          <h3 className="text-sm text-gray-400">Token</h3>
-          {token.mptIssuanceId ? (
-            <>
-              <p className="text-xl font-semibold text-white mt-1">{token.metadata?.t ?? 'Active'}</p>
-              <p className="text-xs font-mono text-gray-500 mt-1">{truncateAddress(token.mptIssuanceId, 8, 6)}</p>
-            </>
-          ) : (
-            <p className="text-xl font-semibold text-gray-600 mt-1">Not created</p>
-          )}
+
+        {/* Step Navigation */}
+        <div className="flex items-center gap-1 mb-8">
+          <StepTab
+            label="1. Setup"
+            active={activeStep === 'setup'}
+            accessible={true}
+            done={walletsReady}
+            onClick={() => setActiveStep('setup')}
+          />
+          <div className="w-8 h-px bg-white/[0.06]" />
+          <StepTab
+            label="2. Issue MPT"
+            active={activeStep === 'issue'}
+            accessible={walletsReady}
+            done={tokenReady}
+            onClick={() => walletsReady && setActiveStep('issue')}
+          />
+          <div className="w-8 h-px bg-white/[0.06]" />
+          <StepTab
+            label="3. Claim Shares"
+            active={activeStep === 'claim'}
+            accessible={tokenReady}
+            done={false}
+            onClick={() => tokenReady && setActiveStep('claim')}
+          />
         </div>
-        <div className="card">
-          <h3 className="text-sm text-gray-400">Holders</h3>
-          <p className="text-xl font-semibold text-white mt-1">{token.holders.length}</p>
-          <p className="text-sm text-gray-500 mt-1">
-            {token.totalShares > 0 ? `${token.totalShares.toLocaleString()} total shares` : 'No shares issued'}
-          </p>
-        </div>
-      </div>
 
-      {/* Wallet Management */}
-      <WalletConnect />
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+          <div className="animate-fade-in" key={activeStep}>
+            {activeStep === 'setup' && (
+              <SetupPanel
+                onComplete={() => setActiveStep('issue')}
+                addLog={addLog}
+              />
+            )}
+            {activeStep === 'issue' && (
+              <IssuePanel
+                onComplete={() => setActiveStep('claim')}
+                addLog={addLog}
+              />
+            )}
+            {activeStep === 'claim' && (
+              <ClaimPanel addLog={addLog} />
+            )}
+          </div>
 
-      {/* Flow Navigation */}
-      <div>
-        <h2 className="text-xl font-semibold text-white mb-4">Protocol Flows</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Link href="/create" className="card hover:border-blue-600 transition-colors group">
-            <h3 className="text-lg font-semibold text-white group-hover:text-blue-400">1. Create Token</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Issue an MPT with equity metadata, compliance flags, and transfer settings.
-            </p>
-            <div className="mt-3 text-xs text-gray-500">
-              {wallets.issuer && wallets.protocol ? 'Ready' : 'Generate Issuer + Protocol wallets first'}
-            </div>
-          </Link>
-
-          <Link href="/mint" className="card hover:border-blue-600 transition-colors group">
-            <h3 className="text-lg font-semibold text-white group-hover:text-blue-400">2. Mint Shares</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Register shareholders, create escrows, and release tokens.
-            </p>
-            <div className="mt-3 text-xs text-gray-500">
-              {token.mptIssuanceId ? 'Token created' : 'Create token first'}
-            </div>
-          </Link>
-
-          <Link href="/trade" className="card hover:border-blue-600 transition-colors group">
-            <h3 className="text-lg font-semibold text-white group-hover:text-blue-400">3. Trade</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              P2P transfers, DEX trading, lock/freeze, and clawback.
-            </p>
-            <div className="mt-3 text-xs text-gray-500">
-              {token.holders.length > 0 ? `${token.holders.length} holders` : 'Mint shares first'}
-            </div>
-          </Link>
-
-          <Link href="/distribute" className="card hover:border-blue-600 transition-colors group">
-            <h3 className="text-lg font-semibold text-white group-hover:text-blue-400">4. Distribute Cashflow</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Proportional dividend/distribution payments to all holders.
-            </p>
-            <div className="mt-3 text-xs text-gray-500">
-              {token.holders.length > 0 ? 'Ready to distribute' : 'Need holders first'}
-            </div>
-          </Link>
+          {/* Activity Log Sidebar */}
+          <div className="hidden lg:block">
+            <ActivityLog logs={logs} />
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function StepTab({
+  label,
+  active,
+  accessible,
+  done,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  accessible: boolean
+  done: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!accessible}
+      className={`
+        px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+        ${active
+          ? 'bg-white/[0.06] text-[var(--text-primary)] border border-white/[0.1]'
+          : accessible
+            ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/[0.03]'
+            : 'text-[var(--text-tertiary)] cursor-not-allowed'
+        }
+      `}
+    >
+      <span className="flex items-center gap-2">
+        {done && (
+          <svg className="w-3.5 h-3.5 text-[var(--green)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+        {label}
+      </span>
+    </button>
   )
 }

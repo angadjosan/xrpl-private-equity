@@ -53,7 +53,8 @@ export async function createMPTEscrow(
   const result = await submitWithRetry(client, tx, protocolWallet)
 
   // Extract the escrow sequence from the transaction result
-  const sequence = (result.result as Record<string, unknown>).Sequence as number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sequence = (result.result as any).Sequence as number
 
   return { result, sequence }
 }

@@ -131,7 +131,8 @@ export async function distributeCashflow(
         currencyIssuer
       )
 
-      const meta = result.result.meta as Record<string, unknown>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = result.result.meta as any
       const txResult = (meta?.TransactionResult as string) ?? 'unknown'
 
       results.push({

@@ -6,13 +6,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      colors: {
-        xrpl: {
-          blue: '#1a73e8',
-          dark: '#0a0f1e',
-          card: '#111827',
-          border: '#1f2937',
-        },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['SF Mono', 'JetBrains Mono', 'Fira Code', 'monospace'],
       },
     },
   },
