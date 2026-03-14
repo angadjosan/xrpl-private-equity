@@ -1,5 +1,5 @@
 // Mock data generators for demo mode (no API keys needed)
-import type { Asset, OrderBook, Trade, Candle, Portfolio, Holding } from '@/types'
+import type { Asset, OrderBook, Trade, Candle } from '@/types'
 
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP', 'GOLD', 'AAPL', 'TSLA', 'SPY']
 const BASE_PRICES: Record<string, number> = {
@@ -71,28 +71,7 @@ export function mockCandles(basePrice: number, count = 200): Candle[] {
   return candles
 }
 
-export function mockPortfolio(): Portfolio {
-  const totalValue = 125000 + Math.random() * 10000
-  const holdings: Holding[] = [
-    { symbol: 'BTC-PERP', leverage: 5, direction: 'long', notional: 45000, pnl: 1250 + Math.random() * 500, entryPrice: 97800, markPrice: 98500 },
-    { symbol: 'ETH-PERP', leverage: 3, direction: 'long', notional: 22000, pnl: -380 + Math.random() * 200, entryPrice: 3900, markPrice: 3850 },
-    { symbol: 'SOL-PERP', leverage: 10, direction: 'short', notional: 15000, pnl: 820 + Math.random() * 300, entryPrice: 190, markPrice: 185 },
-  ]
-  const pnlTotal = holdings.reduce((s, h) => s + h.pnl, 0)
-
-  const equityCurve = Array.from({ length: 96 }, (_, i) => ({
-    timestamp: Date.now() - (96 - i) * 900000,
-    value: totalValue - 5000 + Math.random() * 10000 * (i / 96),
-  }))
-
-  return {
-    totalValueUSD: totalValue,
-    availableUSD: totalValue - holdings.reduce((s, h) => s + h.notional / h.leverage, 0),
-    pnlTodayPct: (pnlTotal / totalValue) * 100,
-    equityCurve,
-    holdings,
-  }
-}
+// Portfolio is now initialized directly in page.tsx with real state management
 
 // Tick updater — slightly mutate prices for live feel
 export function tickAssets(assets: Asset[]): Asset[] {

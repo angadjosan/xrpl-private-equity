@@ -2,13 +2,28 @@
 
 import { useState } from 'react'
 import type { Portfolio, EquityRange } from '@/types'
+import { holdingPnl, holdingMargin, computeIRR } from '@/types'
 import { formatUSD, formatPct } from '@/lib/format'
 
 const RANGES: EquityRange[] = ['1D', '1W', '1M', '3M', 'YTD', '1Y']
 
-export default function Sidebar({ portfolio }: { portfolio: Portfolio }) {
+interface SidebarProps {
+  portfolio: Portfolio
+  onClosePosition: (id: string) => void
+  onCloseAll: () => void
+}
+
+export default function Sidebar({ portfolio, onClosePosition, onCloseAll }: SidebarProps) {
   const [range, setRange] = useState<EquityRange>('1D')
   const isUp = portfolio.pnlTodayPct >= 0
+
+  // IRR: compute from initial capital → current value, using elapsed time
+  const firstPoint = portfolio.equityCurve[0]
+  const daysElapsed = firstPoint ? (Date.now() - firstPoint.timestamp) / (1000 * 60 * 60 * 24) : 0
+  const irr = computeIRR(portfolio.initialCapital, portfolio.totalValueUSD, Math.max(daysElapsed, 1 / 24)) // min 1 hour
+  const irrUp = irr >= 0
+
+  const totalUnrealized = portfolio.holdings.reduce((s, h) => s + holdingPnl(h), 0)
 
   return (
     <div className="w-[280px] flex-shrink-0 panel flex flex-col overflow-y-auto">
@@ -16,9 +31,39 @@ export default function Sidebar({ portfolio }: { portfolio: Portfolio }) {
       <div className="panel-section">
         <p className="text-[10px] text-txt-tertiary uppercase tracking-wider mb-1">Portfolio Value</p>
         <p className="text-xl font-semibold font-mono">{formatUSD(portfolio.totalValueUSD)}</p>
-        <span className={`inline-block mt-1 text-[11px] font-medium px-1.5 py-0.5 rounded ${isUp ? 'bg-bull-soft text-bull' : 'bg-bear-soft text-bear'}`}>
-          {formatPct(portfolio.pnlTodayPct)} today
-        </span>
+        <div className="flex items-center gap-2 mt-1.5">
+          <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${isUp ? 'bg-bull-soft text-bull' : 'bg-bear-soft text-bear'}`}>
+            {formatPct(portfolio.pnlTodayPct)} today
+          </span>
+        </div>
+      </div>
+
+      {/* IRR + P&L stats */}
+      <div className="panel-section">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <p className="text-[9px] text-txt-tertiary uppercase tracking-wider">IRR (Ann.)</p>
+            <p className={`text-sm font-semibold font-mono ${irrUp ? 'text-bull' : 'text-bear'}`}>
+              {irrUp ? '+' : ''}{irr.toFixed(1)}%
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] text-txt-tertiary uppercase tracking-wider">Unrealized P&L</p>
+            <p className={`text-sm font-semibold font-mono ${totalUnrealized >= 0 ? 'text-bull' : 'text-bear'}`}>
+              {totalUnrealized >= 0 ? '+' : ''}{formatUSD(totalUnrealized)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] text-txt-tertiary uppercase tracking-wider">Realized P&L</p>
+            <p className={`text-sm font-semibold font-mono ${portfolio.realizedPnl >= 0 ? 'text-bull' : 'text-bear'}`}>
+              {portfolio.realizedPnl >= 0 ? '+' : ''}{formatUSD(portfolio.realizedPnl)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] text-txt-tertiary uppercase tracking-wider">Available</p>
+            <p className="text-sm font-semibold font-mono text-txt-primary">{formatUSD(portfolio.availableUSD)}</p>
+          </div>
+        </div>
       </div>
 
       {/* Equity curve sparkline */}
@@ -31,38 +76,48 @@ export default function Sidebar({ portfolio }: { portfolio: Portfolio }) {
         <EquitySparkline data={portfolio.equityCurve} />
       </div>
 
-      {/* Available balance */}
-      <div className="panel-section">
-        <div className="flex justify-between text-[11px]">
-          <span className="text-txt-tertiary">Available</span>
-          <span className="font-mono text-txt-primary">{formatUSD(portfolio.availableUSD)}</span>
-        </div>
-      </div>
-
-      {/* Holdings */}
+      {/* Positions */}
       <div className="panel-section flex-1">
-        <p className="text-[10px] text-txt-tertiary uppercase tracking-wider mb-2">Positions</p>
+        <p className="text-[10px] text-txt-tertiary uppercase tracking-wider mb-2">
+          Positions ({portfolio.holdings.length})
+        </p>
         {portfolio.holdings.length === 0 ? (
           <p className="text-[11px] text-txt-tertiary py-4 text-center">No open positions</p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {portfolio.holdings.map(h => {
+              const pnl = holdingPnl(h)
+              const margin = holdingMargin(h)
               const isLong = h.direction === 'long'
-              const isPnlUp = h.pnl >= 0
+              const isPnlUp = pnl >= 0
+              const pnlPct = h.notional > 0 ? (pnl / margin) * 100 : 0 // ROI on margin
+
               return (
-                <div key={h.symbol} className="flex items-center justify-between py-1.5 px-1.5 rounded hover:bg-white/[0.02] transition-colors">
-                  <div>
+                <div key={h.id} className="group py-1.5 px-1.5 rounded hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] font-medium text-txt-primary">{h.symbol.replace('-PERP', '')}</span>
                       <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${isLong ? 'bg-bull-soft text-bull' : 'bg-bear-soft text-bear'}`}>
                         {h.direction.toUpperCase()} {h.leverage}x
                       </span>
                     </div>
-                    <p className="text-[10px] text-txt-tertiary font-mono mt-0.5">{formatUSD(h.notional)}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[11px] font-mono ${isPnlUp ? 'text-bull' : 'text-bear'}`}>
+                        {isPnlUp ? '+' : ''}{formatUSD(pnl)}
+                      </p>
+                      <button
+                        onClick={() => onClosePosition(h.id)}
+                        className="opacity-0 group-hover:opacity-100 text-[9px] px-1.5 py-0.5 rounded bg-bear-soft text-bear hover:bg-bear/20 transition-all"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  <p className={`text-[11px] font-mono ${isPnlUp ? 'text-bull' : 'text-bear'}`}>
-                    {isPnlUp ? '+' : ''}{formatUSD(h.pnl)}
-                  </p>
+                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-txt-tertiary font-mono">
+                    <span>{formatUSD(h.notional)} notional</span>
+                    <span>{formatUSD(margin)} margin</span>
+                    <span className={isPnlUp ? 'text-bull' : 'text-bear'}>{isPnlUp ? '+' : ''}{pnlPct.toFixed(1)}%</span>
+                  </div>
                 </div>
               )
             })}
@@ -73,7 +128,10 @@ export default function Sidebar({ portfolio }: { portfolio: Portfolio }) {
       {/* Close all */}
       {portfolio.holdings.length > 0 && (
         <div className="px-3 py-2 border-t border-bg-border">
-          <button className="w-full py-1.5 rounded text-[11px] font-medium text-bear bg-bear-soft hover:bg-bear/20 transition-colors">
+          <button
+            onClick={onCloseAll}
+            className="w-full py-1.5 rounded text-[11px] font-medium text-bear bg-bear-soft hover:bg-bear/20 transition-colors"
+          >
             Close All Positions
           </button>
         </div>
