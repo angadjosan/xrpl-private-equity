@@ -26,6 +26,8 @@ export function buildMetadata(form: CreateTokenForm): EquityMetadata {
   if (form.exemption) ai.governing_law = form.exemption
   if (form.cashflowCurrency) ai.cashflow_currency = form.cashflowCurrency
   if (form.distributionFrequency) ai.distribution_frequency = form.distributionFrequency
+  if (form.verificationPeriodDays) ai.verification_period_days = String(form.verificationPeriodDays)
+  ai.cashflow_pool = 'protocol'
 
   if (Object.keys(ai).length > 0) {
     metadata.ai = ai

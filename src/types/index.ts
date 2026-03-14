@@ -50,6 +50,8 @@ export interface AdditionalInfo {
   proof_reference?: string      // document hash, Carta link, certificate number, etc.
   transfer_agent?: string       // Carta, AST, Computershare, etc.
   governing_law?: string        // Reg D 506(b), 506(c), Reg S, Reg A+, etc.
+  verification_period_days?: string
+  cashflow_pool?: string
 }
 
 // ─── Proof Types ─────────────────────────────────────────────
@@ -111,6 +113,8 @@ export interface CreateTokenForm {
   // Distributions
   cashflowCurrency: string
   distributionFrequency: string
+  // Verification
+  verificationPeriodDays: number
   // Flags
   flagSelections: FlagSelections
 }
@@ -125,9 +129,49 @@ export interface MPTIssuanceConfig {
 
 // ─── Wallet State ────────────────────────────────────────────
 
+export type VerificationStatus = 'pending' | 'verified' | 'expired' | 'cancelled'
+
+export interface RegistrationRecord {
+  registrantAddress: string
+  shareholderWalletIndex: number
+  shareAmount: string
+  proofFileHash: string
+  documentHash: string
+  escrowSequence: number
+  escrowCondition: string
+  escrowFulfillment: string
+  credentialType: string
+  status: VerificationStatus
+  verificationDeadline: number
+  createdAt: number
+}
+
+export interface TransferDocumentData {
+  transferorName: string
+  transferorAddress: string
+  companyName: string
+  ticker: string
+  shareClass: string
+  shareAmount: number
+  mptIssuanceId: string
+  jurisdiction: string
+  cashflowPoolNote: string
+  signatureName: string
+  signatureDate: string
+}
+
+export interface CredentialInfo {
+  subject: string
+  issuer: string
+  credentialType: string
+  uri?: string
+  accepted: boolean
+}
+
 export interface WalletState {
   issuer: Wallet | null
   protocol: Wallet | null
+  verifier: Wallet | null
   shareholders: Wallet[]
 }
 

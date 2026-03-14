@@ -10,6 +10,7 @@ import { createMPTIssuance, authorizeMPTHolder, selfAuthorizeMPT } from '@/lib/x
 import { sendMPTPayment } from '@/lib/xrpl/payments'
 import { PROOF_TYPES, ENTITY_TYPES, EXEMPTION_TYPES } from '@/types'
 import type { CreateTokenForm } from '@/types'
+import { VERIFICATION_PERIOD_OPTIONS, DEFAULT_VERIFICATION_PERIOD_DAYS } from '@/lib/constants'
 
 type DeployPhase = null | 'wallets' | 'creating' | 'configuring' | 'transferring'
 
@@ -32,6 +33,7 @@ const defaultForm: CreateTokenForm = {
   exemption: '',
   cashflowCurrency: 'USD',
   distributionFrequency: 'quarterly',
+  verificationPeriodDays: DEFAULT_VERIFICATION_PERIOD_DAYS,
   flagSelections: getDefaultFlagSelections(),
 }
 
@@ -242,6 +244,21 @@ export default function CreateForm() {
             </select>
           </Field>
         </div>
+      </div>
+
+      {/* ── Verification ── */}
+      <div className="glass space-y-5">
+        <div>
+          <h2 className="text-base font-semibold">Verification</h2>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">How long the verifier has to approve share registrations before escrow expires.</p>
+        </div>
+        <Field label="Verification Period" hint="Escrow expires after this period if not verified">
+          <select className="input" value={form.verificationPeriodDays} onChange={e => update('verificationPeriodDays', parseInt(e.target.value))} disabled={deploying}>
+            {VERIFICATION_PERIOD_OPTIONS.map(d => (
+              <option key={d} value={d}>{d} days</option>
+            ))}
+          </select>
+        </Field>
       </div>
 
       {/* ── Token Rules ── */}

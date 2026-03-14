@@ -184,6 +184,13 @@ export function rippleTimeToUnix(rippleTime: number): number {
   return rippleTime + RIPPLE_EPOCH_OFFSET
 }
 
+// ─── Verification Period Helper ─────────────────────────────────────────────
+
+/** Convert verification period in days to seconds for escrow CancelAfter */
+export function verificationPeriodToSeconds(days: number): number {
+  return days * 24 * 60 * 60
+}
+
 // ─── Internal Helpers ───────────────────────────────────────────────────────
 
 function bytesToHex(bytes: Uint8Array): string {

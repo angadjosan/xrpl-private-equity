@@ -9,14 +9,17 @@ interface WalletContextValue {
   wallets: WalletState
   /** Ensures issuer + protocol wallets exist, returns them directly (no stale closure). */
   ensureWallets: () => Promise<{ issuer: Wallet; protocol: Wallet } | null>
+  /** Ensures verifier wallet exists, returns it directly. */
+  ensureVerifier: () => Promise<Wallet | null>
   addShareholder: () => Promise<Wallet | null>
   removeShareholder: (index: number) => void
   provisioning: boolean
 }
 
 export const WalletContext = createContext<WalletContextValue>({
-  wallets: { issuer: null, protocol: null, shareholders: [] },
+  wallets: { issuer: null, protocol: null, verifier: null, shareholders: [] },
   ensureWallets: async () => null,
+  ensureVerifier: async () => null,
   addShareholder: async () => null,
   removeShareholder: () => {},
   provisioning: false,
@@ -27,6 +30,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [wallets, setWallets] = useState<WalletState>({
     issuer: null,
     protocol: null,
+    verifier: null,
     shareholders: [],
   })
   const [provisioning, setProvisioning] = useState(false)
@@ -68,6 +72,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [fundNewWallet])
 
+  const ensureVerifier = useCallback(async (): Promise<Wallet | null> => {
+    let verifier = walletsRef.current.verifier
+    if (verifier) return verifier
+
+    setProvisioning(true)
+    try {
+      verifier = await fundNewWallet()
+      if (!verifier) return null
+      setWallets(prev => ({ ...prev, verifier }))
+      return verifier
+    } finally {
+      setProvisioning(false)
+    }
+  }, [fundNewWallet])
+
   const addShareholder = useCallback(async (): Promise<Wallet | null> => {
     const wallet = await fundNewWallet()
     if (wallet) {
@@ -88,7 +107,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ wallets, ensureWallets, addShareholder, removeShareholder, provisioning }}
+      value={{ wallets, ensureWallets, ensureVerifier, addShareholder, removeShareholder, provisioning }}
     >
       {children}
     </WalletContext.Provider>

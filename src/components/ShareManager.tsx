@@ -1,15 +1,26 @@
 'use client'
 
+import { useState } from 'react'
 import { useToken } from '@/hooks/useToken'
 import { PROOF_TYPES } from '@/types'
+import ShareRegistration from './ShareRegistration'
+import VerifierPanel from './VerifierPanel'
+import CashflowDistribution from './CashflowDistribution'
+
+type SubView = 'overview' | 'register' | 'verify' | 'cashflow'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
   const mptId = token.mptIssuanceId!
   const meta = token.metadata
   const ai = meta?.ai as Record<string, string> | undefined
+  const [subView, setSubView] = useState<SubView>('overview')
 
   const proofLabel = PROOF_TYPES.find(p => p.value === ai?.proof_type)?.label ?? ai?.proof_type
+
+  if (subView === 'register') return <ShareRegistration onBack={() => setSubView('overview')} />
+  if (subView === 'verify') return <VerifierPanel onBack={() => setSubView('overview')} />
+  if (subView === 'cashflow') return <CashflowDistribution onBack={() => setSubView('overview')} />
 
   return (
     <div className="space-y-8">
@@ -26,6 +37,39 @@ export default function ShareManager() {
             Live on the XRP Ledger. All metadata stored on-chain per XLS-89.
           </p>
         </div>
+      </div>
+
+      {/* Action Tabs */}
+      <div className="grid grid-cols-3 gap-3">
+        <button onClick={() => setSubView('register')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-2">
+            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">Register Shares</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Upload proof & escrow</p>
+        </button>
+
+        <button onClick={() => setSubView('verify')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group">
+          <div className="w-10 h-10 rounded-xl bg-[var(--yellow-soft)] flex items-center justify-center mx-auto mb-2">
+            <svg className="w-5 h-5 text-[var(--yellow)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">Verify Registrations</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Approve & issue credentials</p>
+        </button>
+
+        <button onClick={() => setSubView('cashflow')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group">
+          <div className="w-10 h-10 rounded-xl bg-[var(--green-soft)] flex items-center justify-center mx-auto mb-2">
+            <svg className="w-5 h-5 text-[var(--green)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">Distribute Cashflow</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Pay holders pro-rata</p>
+        </button>
       </div>
 
       {/* Token Identity */}
@@ -67,6 +111,8 @@ export default function ShareManager() {
           {ai?.share_class && <MetaRow label="Share Class" value={ai.share_class} />}
           {ai?.par_value && <MetaRow label="Par Value" value={ai.par_value} />}
           {ai?.cusip && <MetaRow label="CUSIP / ISIN" value={ai.cusip} />}
+          {ai?.verification_period_days && <MetaRow label="Verification Period" value={`${ai.verification_period_days} days`} />}
+          {ai?.cashflow_pool && <MetaRow label="Cashflow Pool" value={ai.cashflow_pool} />}
         </div>
       </div>
 

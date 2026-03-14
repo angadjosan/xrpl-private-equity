@@ -5,31 +5,33 @@ import { useXRPL } from '@/hooks/useXRPL'
 import { useToken } from '@/hooks/useToken'
 import TopBar from '@/components/TopBar'
 import CreateForm from '@/components/CreateForm'
-import ShareManager from '@/components/ShareManager'
+import FundDashboard from '@/components/FundDashboard'
 import TokenList from '@/components/TokenList'
 
-type View = 'list' | 'create' | 'issued'
+type View = 'list' | 'create'
 
 export default function Home() {
   const { status } = useXRPL()
   const { token } = useToken()
   const [view, setView] = useState<View>('list')
 
-  // After successful deploy, show the issued view
-  const currentView = token.mptIssuanceId ? 'issued' : view
+  // After deploy, show fund dashboard
+  const isDeployed = !!token.mptIssuanceId
 
   return (
     <div className="min-h-screen">
       <TopBar status={status} />
 
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        {currentView === 'list' && (
+      <div className={`mx-auto px-6 py-12 ${isDeployed ? 'max-w-3xl' : 'max-w-2xl'}`}>
+        {isDeployed ? (
+          <FundDashboard />
+        ) : view === 'list' ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight">Equity Protocol</h1>
                 <p className="text-[var(--text-secondary)] mt-1 text-sm">
-                  Tokenize private shares on the XRP Ledger.
+                  Tokenize private shares on the XRP Ledger. Trade on Liquid.
                 </p>
               </div>
               <button onClick={() => setView('create')} className="btn-primary">
@@ -38,9 +40,7 @@ export default function Home() {
             </div>
             <TokenList onCreateNew={() => setView('create')} />
           </div>
-        )}
-
-        {currentView === 'create' && (
+        ) : (
           <div>
             <button
               onClick={() => setView('list')}
@@ -54,8 +54,6 @@ export default function Home() {
             <CreateForm />
           </div>
         )}
-
-        {currentView === 'issued' && <ShareManager />}
       </div>
     </div>
   )

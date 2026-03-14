@@ -44,3 +44,12 @@ export const RETRY_BASE_DELAY_MS = 1000
 
 /** Default network identifier */
 export const NETWORK = 'devnet'
+
+/** Default verification period in days for share registration */
+export const DEFAULT_VERIFICATION_PERIOD_DAYS = 14
+
+/** Available verification period options in days */
+export const VERIFICATION_PERIOD_OPTIONS = [7, 14, 30, 60, 90] as const
+
+/** Credential type string for verified share ownership */
+export const CREDENTIAL_TYPE_SHARE_VERIFIED = 'ShareOwnershipVerified'
