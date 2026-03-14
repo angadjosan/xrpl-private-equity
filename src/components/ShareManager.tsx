@@ -7,11 +7,10 @@ import type { RegistrationRecord } from '@/types'
 import FinancialsForm from './FinancialsForm'
 import RegisterShares from './RegisterShares'
 import VerifierDashboard from './VerifierDashboard'
-import NAVSync from './NAVSync'
 import EarningsReport from './EarningsReport'
 import CashflowPanel from './CashflowPanel'
 
-type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'nav' | 'earnings'
+type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'earnings'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
@@ -39,9 +38,6 @@ export default function ShareManager() {
   }
   if (subView === 'financials') {
     return <FinancialsForm onBack={() => setSubView('overview')} />
-  }
-  if (subView === 'nav') {
-    return <NAVSync onBack={() => setSubView('overview')} />
   }
   if (subView === 'earnings') {
     return <EarningsReport onBack={() => setSubView('overview')} />
@@ -114,15 +110,6 @@ export default function ShareManager() {
           <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Reports & DCF valuation</p>
         </button>
 
-        <button onClick={() => setSubView('nav')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group py-5">
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-2">
-            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-          <p className="text-sm font-medium">NAV Oracle</p>
-          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Sync Liquid P&L → DEX</p>
-        </button>
       </div>
 
       {/* Stats */}
