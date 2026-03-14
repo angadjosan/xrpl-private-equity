@@ -120,9 +120,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       })
       state.vaultId = vaultId
 
-      // Deposit protocol's XRP into vault (leave 50 XRP for fees)
+      // Deposit protocol's XRP into vault — keep 200 XRP for reserves,
+      // broker cover, DEX offers, and future tx fees
       const protocolBal = await getBalance(protocol.address)
-      const depositAmount = Math.floor((protocolBal - 50) * 1_000_000)
+      const depositAmount = Math.floor(Math.max(0, protocolBal - 200) * 1_000_000)
       if (depositAmount > 0) {
         await vaultDeposit(protocol, vaultId, String(depositAmount))
       }
@@ -136,8 +137,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       })
       state.loanBrokerId = loanBrokerId
 
-      // Deposit cover for the loan broker
-      const coverAmount = Math.floor(50 * 1_000_000) // 50 XRP cover
+      // Deposit cover for the loan broker — use 20 XRP
+      const coverAmount = Math.floor(20 * 1_000_000)
       await depositCover(protocol, loanBrokerId, String(coverAmount))
 
       // ── Seed DEX liquidity ──
