@@ -25,18 +25,31 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
     if (!client?.isConnected()) return
     setLoading(true)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await client.request({ command: 'ledger_data', type: 'mpt_issuance', limit: 50 } as any)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const state = (response.result as any).state as any[] | undefined
+      const allEntries: Record<string, unknown>[] = []
+      let marker: unknown = undefined
 
-      if (!state) {
+      // Paginate through all mpt_issuance ledger entries
+      do {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req: any = { command: 'ledger_data', type: 'mpt_issuance', limit: 100 }
+        if (marker) req.marker = marker
+
+        const response = await client.request(req)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = response.result as any
+        const state = result.state as any[] | undefined
+
+        if (state) allEntries.push(...state)
+        marker = result.marker
+      } while (marker)
+
+      if (allEntries.length === 0) {
         setTokens([])
         setScanned(true)
         return
       }
 
-      const parsed: TokenEntry[] = state.map((entry: Record<string, unknown>) => {
+      const parsed: TokenEntry[] = allEntries.map((entry: Record<string, unknown>) => {
         let metadata: EquityMetadata | null = null
         try {
           if (entry.MPTokenMetadata) {

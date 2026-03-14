@@ -246,6 +246,59 @@ export interface DistributionResult {
 
 // ─── XRPL Connection ────────────────────────────────────────
 
+// ─── DCF / Financials ───────────────────────────────────────
+
+export interface FinancialEntry {
+  year: number
+  value: number
+  actual: boolean
+}
+
+export interface DCFFinancials {
+  currency: string
+  fiscalYearEnd: string
+  revenue: FinancialEntry[]
+  ebitda: FinancialEntry[]
+  netIncome: FinancialEntry[]
+  freeCashFlow: FinancialEntry[]
+}
+
+export interface DCFInputs {
+  discountRate: number
+  terminalGrowthRate: number
+  terminalMultiple: number
+  projectionYears: number
+  taxRate: number
+  netDebt: number
+  sharesOutstanding: number
+}
+
+export interface ComparableCompany {
+  name: string
+  evRevenue: number
+  evEbitda: number
+  peRatio: number
+}
+
+export interface DCFMetadata {
+  lastUpdated: string
+  preparedBy: string
+  notes: string
+}
+
+export interface DCFData {
+  mptIssuanceId: string
+  ticker: string
+  companyName: string
+  totalShares: number
+  financials: DCFFinancials
+  dcfInputs: DCFInputs
+  comparables: ComparableCompany[]
+  metadata: DCFMetadata
+}
+
+// ─── XRPL Connection ────────────────────────────────────────
+
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export interface XRPLConnectionState {

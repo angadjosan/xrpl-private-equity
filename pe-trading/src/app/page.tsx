@@ -10,6 +10,7 @@ import ChartPanel from '@/components/ChartPanel'
 import OrderPanel from '@/components/OrderPanel'
 
 const INITIAL_CAPITAL = 100_000
+const FAVORITES = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP', 'GOLD-PERP', 'AAPL-PERP', 'ACME-PERP']
 
 export default function Terminal() {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -26,10 +27,15 @@ export default function Terminal() {
     realizedPnl: 0,
     equityCurve: [{ timestamp: Date.now(), value: INITIAL_CAPITAL }],
     holdings: [],
+    committedCapital: 150_000,
+    calledCapital: INITIAL_CAPITAL,
+    distributedCapital: 0,
+    vintageYear: 2025,
+    managementFeePct: 0.02,
+    carriedInterestPct: 0.20,
   })
   const initialized = useRef(false)
 
-  // Initialize
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
@@ -41,41 +47,31 @@ export default function Terminal() {
     setCandles(mockCandles(active.price))
   }, [activeSymbol])
 
-  // Live tick every 1s — update prices AND holding mark prices + portfolio
+  // Live tick — update prices + holdings
   useEffect(() => {
     const interval = setInterval(() => {
       setAssets(prev => {
         const ticked = tickAssets(prev)
-
-        // Update holdings with new mark prices
         setPortfolio(p => {
-          const updatedHoldings = p.holdings.map(h => {
-            const asset = ticked.find(a => a.symbol === h.symbol)
-            return asset ? { ...h, markPrice: asset.price } : h
+          const updated = p.holdings.map(h => {
+            const a = ticked.find(x => x.symbol === h.symbol)
+            return a ? { ...h, markPrice: a.price } : h
           })
-
-          const unrealizedPnl = updatedHoldings.reduce((s, h) => s + holdingPnl(h), 0)
-          const totalMargin = updatedHoldings.reduce((s, h) => s + holdingMargin(h), 0)
-          const totalValue = p.initialCapital + p.realizedPnl + unrealizedPnl
-          const available = totalValue - totalMargin
-
-          // Append to equity curve (every 5 ticks ~ 5s)
-          const newCurve = [...p.equityCurve]
-          if (newCurve.length === 0 || Date.now() - newCurve[newCurve.length - 1].timestamp > 5000) {
-            newCurve.push({ timestamp: Date.now(), value: totalValue })
-            if (newCurve.length > 500) newCurve.shift()
+          const unrealized = updated.reduce((s, h) => s + holdingPnl(h), 0)
+          const totalMargin = updated.reduce((s, h) => s + holdingMargin(h), 0)
+          const totalValue = p.initialCapital + p.realizedPnl + unrealized
+          const curve = [...p.equityCurve]
+          if (!curve.length || Date.now() - curve[curve.length - 1].timestamp > 5000) {
+            curve.push({ timestamp: Date.now(), value: totalValue })
+            if (curve.length > 500) curve.shift()
           }
-
           return {
-            ...p,
-            holdings: updatedHoldings,
-            totalValueUSD: totalValue,
-            availableUSD: Math.max(0, available),
+            ...p, holdings: updated, totalValueUSD: totalValue,
+            availableUSD: Math.max(0, totalValue - totalMargin),
             pnlTodayPct: p.initialCapital > 0 ? ((totalValue - p.initialCapital) / p.initialCapital) * 100 : 0,
-            equityCurve: newCurve,
+            equityCurve: curve,
           }
         })
-
         return ticked
       })
     }, 1000)
@@ -84,116 +80,76 @@ export default function Terminal() {
 
   const switchAsset = useCallback((sym: string) => {
     setActiveSymbol(sym)
-    const asset = assets.find(a => a.symbol === sym)
-    if (asset) {
-      setOrderBook(mockOrderBook(asset.price))
-      setTrades(mockTrades(asset.price))
-      setCandles(mockCandles(asset.price))
+    const a = assets.find(x => x.symbol === sym)
+    if (a) {
+      setOrderBook(mockOrderBook(a.price))
+      setTrades(mockTrades(a.price))
+      setCandles(mockCandles(a.price))
     }
   }, [assets])
 
   const switchTimeframe = useCallback((tf: Timeframe) => {
     setTimeframe(tf)
-    const asset = assets.find(a => a.symbol === activeSymbol)
-    if (asset) setCandles(mockCandles(asset.price))
+    const a = assets.find(x => x.symbol === activeSymbol)
+    if (a) setCandles(mockCandles(a.price))
   }, [assets, activeSymbol])
 
-  // ─── Open Position ────────────────────────────────────────
   const openPosition = useCallback((symbol: string, side: 'buy' | 'sell', sizeUSD: number, leverage: number) => {
     const asset = assets.find(a => a.symbol === symbol)
     if (!asset) return
-
-    const margin = sizeUSD / leverage
-
     setPortfolio(prev => {
-      if (prev.availableUSD < margin) return prev // not enough margin
-
-      const newHolding: Holding = {
-        id: crypto.randomUUID(),
-        symbol,
-        leverage,
+      const margin = sizeUSD / leverage
+      if (prev.availableUSD < margin) return prev
+      const h: Holding = {
+        id: crypto.randomUUID(), symbol, leverage,
         direction: side === 'buy' ? 'long' : 'short',
-        notional: sizeUSD,
-        entryPrice: asset.price,
-        markPrice: asset.price,
-        openedAt: Date.now(),
+        notional: sizeUSD, entryPrice: asset.price, markPrice: asset.price, openedAt: Date.now(),
       }
-
-      const holdings = [...prev.holdings, newHolding]
-      const totalMargin = holdings.reduce((s, h) => s + holdingMargin(h), 0)
-      const unrealizedPnl = holdings.reduce((s, h) => s + holdingPnl(h), 0)
-      const totalValue = prev.initialCapital + prev.realizedPnl + unrealizedPnl
-
-      return {
-        ...prev,
-        holdings,
-        totalValueUSD: totalValue,
-        availableUSD: Math.max(0, totalValue - totalMargin),
-      }
+      const holdings = [...prev.holdings, h]
+      const tm = holdings.reduce((s, x) => s + holdingMargin(x), 0)
+      const ur = holdings.reduce((s, x) => s + holdingPnl(x), 0)
+      const tv = prev.initialCapital + prev.realizedPnl + ur
+      return { ...prev, holdings, totalValueUSD: tv, availableUSD: Math.max(0, tv - tm) }
     })
   }, [assets])
 
-  // ─── Close Position ───────────────────────────────────────
-  const closePosition = useCallback((holdingId: string) => {
+  const closePosition = useCallback((id: string) => {
     setPortfolio(prev => {
-      const holding = prev.holdings.find(h => h.id === holdingId)
-      if (!holding) return prev
-
-      const pnl = holdingPnl(holding)
-      const remaining = prev.holdings.filter(h => h.id !== holdingId)
-      const newRealized = prev.realizedPnl + pnl
-      const unrealizedPnl = remaining.reduce((s, h) => s + holdingPnl(h), 0)
-      const totalValue = prev.initialCapital + newRealized + unrealizedPnl
-      const totalMargin = remaining.reduce((s, h) => s + holdingMargin(h), 0)
-
-      return {
-        ...prev,
-        holdings: remaining,
-        realizedPnl: newRealized,
-        totalValueUSD: totalValue,
-        availableUSD: Math.max(0, totalValue - totalMargin),
-        pnlTodayPct: prev.initialCapital > 0 ? ((totalValue - prev.initialCapital) / prev.initialCapital) * 100 : 0,
-      }
+      const h = prev.holdings.find(x => x.id === id)
+      if (!h) return prev
+      const pnl = holdingPnl(h)
+      const rest = prev.holdings.filter(x => x.id !== id)
+      const nr = prev.realizedPnl + pnl
+      const ur = rest.reduce((s, x) => s + holdingPnl(x), 0)
+      const tv = prev.initialCapital + nr + ur
+      const tm = rest.reduce((s, x) => s + holdingMargin(x), 0)
+      return { ...prev, holdings: rest, realizedPnl: nr, totalValueUSD: tv, availableUSD: Math.max(0, tv - tm),
+        pnlTodayPct: prev.initialCapital > 0 ? ((tv - prev.initialCapital) / prev.initialCapital) * 100 : 0 }
     })
   }, [])
 
-  // ─── Close All ────────────────────────────────────────────
-  const closeAllPositions = useCallback(() => {
+  const closeAll = useCallback(() => {
     setPortfolio(prev => {
       const totalPnl = prev.holdings.reduce((s, h) => s + holdingPnl(h), 0)
-      const newRealized = prev.realizedPnl + totalPnl
-      const totalValue = prev.initialCapital + newRealized
-
-      return {
-        ...prev,
-        holdings: [],
-        realizedPnl: newRealized,
-        totalValueUSD: totalValue,
-        availableUSD: totalValue,
-        pnlTodayPct: prev.initialCapital > 0 ? ((totalValue - prev.initialCapital) / prev.initialCapital) * 100 : 0,
-      }
+      const nr = prev.realizedPnl + totalPnl
+      const tv = prev.initialCapital + nr
+      return { ...prev, holdings: [], realizedPnl: nr, totalValueUSD: tv, availableUSD: tv,
+        pnlTodayPct: prev.initialCapital > 0 ? ((tv - prev.initialCapital) / prev.initialCapital) * 100 : 0 }
     })
   }, [])
 
   const activeAsset = assets.find(a => a.symbol === activeSymbol) ?? assets[0]
-
   if (!activeAsset) return <div className="h-screen bg-bg-primary flex items-center justify-center text-txt-tertiary">Loading...</div>
 
   return (
     <div className="h-screen flex flex-col bg-bg-primary">
-      <TopNav assets={assets} active={activeAsset} onSelect={switchAsset} />
+      <TopNav assets={assets} active={activeAsset} onSelect={switchAsset} favorites={FAVORITES} />
       <div className="flex-1 flex min-h-0">
-        <Sidebar portfolio={portfolio} onClosePosition={closePosition} onCloseAll={closeAllPositions} />
+        <Sidebar portfolio={portfolio} onClosePosition={closePosition} onCloseAll={closeAll} />
         <div className="flex-1 flex flex-col min-w-0">
           <ChartPanel candles={candles} activeAsset={activeAsset} timeframe={timeframe} onTimeframeChange={switchTimeframe} />
         </div>
-        <OrderPanel
-          orderBook={orderBook}
-          trades={trades}
-          activeAsset={activeAsset}
-          portfolio={portfolio}
-          onPlaceOrder={openPosition}
-        />
+        <OrderPanel orderBook={orderBook} trades={trades} activeAsset={activeAsset} portfolio={portfolio} onPlaceOrder={openPosition} />
       </div>
     </div>
   )

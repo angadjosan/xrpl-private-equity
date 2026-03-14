@@ -1,15 +1,22 @@
 'use client'
 
+import { useState } from 'react'
 import { useToken } from '@/hooks/useToken'
 import { PROOF_TYPES } from '@/types'
+import FinancialsForm from './FinancialsForm'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
+  const [showFinancials, setShowFinancials] = useState(false)
   const mptId = token.mptIssuanceId!
   const meta = token.metadata
   const ai = meta?.ai as Record<string, string> | undefined
 
   const proofLabel = PROOF_TYPES.find(p => p.value === ai?.proof_type)?.label ?? ai?.proof_type
+
+  if (showFinancials) {
+    return <FinancialsForm onBack={() => setShowFinancials(false)} />
+  }
 
   return (
     <div className="space-y-8">
@@ -110,6 +117,10 @@ export default function ShareManager() {
           <RuleBadge label="Clawback" on={!!(token.flags & 0x40)} />
         </div>
       </div>
+
+      <button onClick={() => setShowFinancials(true)} className="btn-primary w-full py-3.5 text-[15px]">
+        Add Company Financials
+      </button>
 
       <button onClick={reset} className="btn-ghost w-full border border-dashed border-white/[0.08]">
         Issue Another Token

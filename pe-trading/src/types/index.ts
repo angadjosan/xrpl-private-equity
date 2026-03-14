@@ -7,34 +7,28 @@ export interface Asset {
   openInterest: number
   funding: number
   countdown: string
+  isXRPLEquity?: boolean // true if this is an XRPL equity token from our protocol
+  xrplMetadata?: XRPLEquityMeta
 }
 
-export interface OrderBookLevel {
-  price: number
-  size: number
-  total?: number
+export interface XRPLEquityMeta {
+  companyName: string
+  ticker: string
+  entityType: string
+  jurisdiction: string
+  shareClass: string
+  totalShares: number
+  mptIssuanceId: string
+  revenue?: number
+  revenueGrowth?: number
+  ebitdaMargin?: number
+  netIncome?: number
 }
 
-export interface OrderBook {
-  bids: OrderBookLevel[]
-  asks: OrderBookLevel[]
-}
-
-export interface Trade {
-  price: number
-  size: number
-  side: 'buy' | 'sell'
-  timestamp: number
-}
-
-export interface Candle {
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  timestamp: number
-}
+export interface OrderBookLevel { price: number; size: number }
+export interface OrderBook { bids: OrderBookLevel[]; asks: OrderBookLevel[] }
+export interface Trade { price: number; size: number; side: 'buy' | 'sell'; timestamp: number }
+export interface Candle { open: number; high: number; low: number; close: number; volume: number; timestamp: number }
 
 export interface Holding {
   id: string
@@ -55,6 +49,13 @@ export interface Portfolio {
   realizedPnl: number
   equityCurve: { timestamp: number; value: number }[]
   holdings: Holding[]
+  // PE metrics
+  committedCapital: number
+  calledCapital: number
+  distributedCapital: number
+  vintageYear: number
+  managementFeePct: number
+  carriedInterestPct: number
 }
 
 export interface OrderState {
@@ -63,25 +64,54 @@ export interface OrderState {
   size: string
   price: string
   leverage: number
+  tp: string
+  sl: string
+  reduceOnly: boolean
 }
 
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D'
 export type EquityRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y'
 
-// Computed from holding + current price
+// ─── Computed helpers ────────────────────────────────────────
+
 export function holdingPnl(h: Holding): number {
-  const direction = h.direction === 'long' ? 1 : -1
-  return direction * (h.markPrice - h.entryPrice) / h.entryPrice * h.notional
+  const dir = h.direction === 'long' ? 1 : -1
+  return dir * (h.markPrice - h.entryPrice) / h.entryPrice * h.notional
 }
 
 export function holdingMargin(h: Holding): number {
   return h.notional / h.leverage
 }
 
-// IRR approximation: annualized return based on equity curve
+export function holdingROI(h: Holding): number {
+  const pnl = holdingPnl(h)
+  const margin = holdingMargin(h)
+  return margin > 0 ? (pnl / margin) * 100 : 0
+}
+
+// IRR: annualized return
 export function computeIRR(initial: number, current: number, daysElapsed: number): number {
   if (daysElapsed <= 0 || initial <= 0) return 0
-  const totalReturn = (current - initial) / initial
-  const annualized = Math.pow(1 + totalReturn, 365 / daysElapsed) - 1
-  return annualized * 100
+  const r = (current - initial) / initial
+  return (Math.pow(1 + r, 365 / daysElapsed) - 1) * 100
+}
+
+// MOIC: multiple on invested capital
+export function computeMOIC(totalValue: number, calledCapital: number): number {
+  return calledCapital > 0 ? totalValue / calledCapital : 0
+}
+
+// DPI: distributions to paid-in capital
+export function computeDPI(distributed: number, calledCapital: number): number {
+  return calledCapital > 0 ? distributed / calledCapital : 0
+}
+
+// RVPI: residual value to paid-in
+export function computeRVPI(nav: number, calledCapital: number): number {
+  return calledCapital > 0 ? nav / calledCapital : 0
+}
+
+// TVPI: total value to paid-in (DPI + RVPI)
+export function computeTVPI(totalValue: number, distributed: number, calledCapital: number): number {
+  return calledCapital > 0 ? (totalValue + distributed) / calledCapital : 0
 }
