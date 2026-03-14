@@ -116,7 +116,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setPhase('creating-vault')
       const vaultId = await createVault(protocol, {
         maxAssets: '500000000000', // 500k XRP in drops
-        data: 'PE Leverage Vault',
+        data: Buffer.from('PE Leverage Vault').toString('hex'),
       })
       state.vaultId = vaultId
 
