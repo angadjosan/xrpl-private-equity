@@ -36,7 +36,6 @@ export default function CreateForm() {
   const [form, setForm] = useState<CreateTokenForm>(defaultForm)
   const [phase, setPhase] = useState<DeployPhase>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showMore, setShowMore] = useState(false)
 
   const metadata = form.companyName && form.ticker ? buildMetadata(form) : null
   const metadataSize = metadata ? getMetadataSize(metadata) : 0
@@ -58,7 +57,6 @@ export default function CreateForm() {
     setError(null)
 
     try {
-      // Auto-provision wallets — returns them directly (no stale closure)
       setPhase('wallets')
       const result = await ensureWallets()
       if (!result) throw new Error('Could not create accounts. Check your connection.')
@@ -67,7 +65,6 @@ export default function CreateForm() {
       const flagsValue = computeFlags(form.flagSelections)
       const metadataHex = encodeMetadataHex(metadata)
 
-      // Create issuance
       setPhase('creating')
       const { mptIssuanceId } = await createMPTIssuance(client, issuer, {
         assetScale: form.assetScale,
@@ -77,18 +74,15 @@ export default function CreateForm() {
         metadata: metadataHex,
       })
 
-      // Authorize + opt-in protocol
       setPhase('configuring')
       if (form.flagSelections.tfMPTRequireAuth) {
         await authorizeMPTHolder(client, issuer, mptIssuanceId, protocol.address)
       }
       await selfAuthorizeMPT(client, protocol, mptIssuanceId)
 
-      // Transfer to custody
       setPhase('transferring')
       await sendMPTPayment(client, issuer, protocol.address, mptIssuanceId, String(form.totalShares))
 
-      // Done — update context (triggers view switch)
       setMPTIssuanceId(mptIssuanceId)
       setMetadata(metadata)
       setTotalShares(form.totalShares)
@@ -110,45 +104,101 @@ export default function CreateForm() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Create Equity Token</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Issue Equity Token</h1>
         <p className="text-[var(--text-secondary)] mt-1.5 text-sm leading-relaxed">
-          Tokenize company shares on the XRP Ledger. Configure your token, then deploy.
+          Create an on-chain representation of company shares. All metadata is stored on the XRP Ledger per the XLS-89 standard.
         </p>
       </div>
 
-      {/* Token Info */}
+      {/* ── Section 1: Company Identity ── */}
       <div className="glass space-y-5">
+        <h2 className="text-base font-semibold">Company</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Company Name</label>
-            <input className="input" value={form.companyName} onChange={e => update('companyName', e.target.value)} placeholder="Acme Corp" disabled={deploying} />
+            <label className="label">Legal Entity Name</label>
+            <input className="input" value={form.companyName} onChange={e => update('companyName', e.target.value)} placeholder="Acme Holdings Inc." disabled={deploying} />
           </div>
           <div>
-            <label className="label">Ticker</label>
+            <label className="label">Ticker Symbol</label>
             <input className="input" value={form.ticker} onChange={e => update('ticker', e.target.value.toUpperCase().slice(0, 10))} placeholder="ACME" maxLength={10} disabled={deploying} />
           </div>
         </div>
         <div>
-          <label className="label">Description</label>
-          <input className="input" value={form.description} onChange={e => update('description', e.target.value)} placeholder="Each token represents 1 share of..." disabled={deploying} />
+          <label className="label">Token Description</label>
+          <textarea className="input !h-auto" rows={2} value={form.description} onChange={e => update('description', e.target.value)} placeholder="Each token represents 1 Class A common share of Acme Holdings Inc., held in custody by the issuing SPV." disabled={deploying} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label">Total Shares</label>
-            <input type="number" className="input" value={form.totalShares || ''} onChange={e => update('totalShares', parseInt(e.target.value) || 0)} placeholder="10,000,000" min={1} disabled={deploying} />
-          </div>
-          <div>
             <label className="label">Jurisdiction</label>
             <input className="input" value={form.jurisdiction} onChange={e => update('jurisdiction', e.target.value)} placeholder="US-DE" disabled={deploying} />
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-1">Country or state of incorporation</p>
+          </div>
+          <div>
+            <label className="label">Company Website</label>
+            <input className="input" value={form.companyWebsite} onChange={e => update('companyWebsite', e.target.value)} placeholder="https://acme.com" disabled={deploying} />
           </div>
         </div>
       </div>
 
-      {/* Token Capabilities */}
+      {/* ── Section 2: Share Structure ── */}
+      <div className="glass space-y-5">
+        <h2 className="text-base font-semibold">Share Structure</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Total Shares</label>
+            <input type="number" className="input" value={form.totalShares || ''} onChange={e => update('totalShares', parseInt(e.target.value) || 0)} placeholder="10,000,000" min={1} disabled={deploying} />
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-1">1 token = 1 share (immutable supply)</p>
+          </div>
+          <div>
+            <label className="label">Share Class</label>
+            <input className="input" value={form.shareClass} onChange={e => update('shareClass', e.target.value)} placeholder="Class A Common" disabled={deploying} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Par Value</label>
+            <input className="input" value={form.parValue} onChange={e => update('parValue', e.target.value)} placeholder="0.001" disabled={deploying} />
+          </div>
+          <div>
+            <label className="label">Transfer Fee</label>
+            <input type="number" className="input" value={form.transferFee} onChange={e => update('transferFee', parseInt(e.target.value) || 0)} min={0} max={50000} disabled={deploying} />
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-1">In tenths of a basis point (0 = free)</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 3: Cashflow / Distributions ── */}
+      <div className="glass space-y-5">
+        <h2 className="text-base font-semibold">Distributions</h2>
+        <p className="text-xs text-[var(--text-tertiary)] -mt-2">How dividends and cashflows are paid to holders.</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="label">Currency</label>
+            <input className="input" value={form.cashflowCurrency} onChange={e => update('cashflowCurrency', e.target.value)} placeholder="USD" disabled={deploying} />
+          </div>
+          <div>
+            <label className="label">Payment Token</label>
+            <input className="input" value={form.cashflowToken} onChange={e => update('cashflowToken', e.target.value)} placeholder="RLUSD" disabled={deploying} />
+          </div>
+          <div>
+            <label className="label">Frequency</label>
+            <select className="input" value={form.distributionFrequency} onChange={e => update('distributionFrequency', e.target.value)} disabled={deploying}>
+              <option value="">None</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="semi-annual">Semi-Annual</option>
+              <option value="annual">Annual</option>
+              <option value="on-demand">On Demand</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section 4: Token Rules ── */}
       <div className="glass space-y-4">
         <div>
           <h2 className="text-base font-semibold">Token Rules</h2>
-          <p className="text-xs text-[var(--text-tertiary)] mt-1">These cannot be changed after creation.</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">Permanent. Cannot be changed after creation.</p>
         </div>
         <div className="space-y-1.5">
           {MPT_FLAGS.map(flag => {
@@ -179,46 +229,6 @@ export default function CreateForm() {
         </div>
       </div>
 
-      {/* More Settings (collapsed) */}
-      <button
-        onClick={() => setShowMore(!showMore)}
-        className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-      >
-        <svg className={`w-3.5 h-3.5 transition-transform ${showMore ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-        More settings
-      </button>
-      {showMore && (
-        <div className="glass animate-fade-in">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Asset Scale</label>
-              <input type="number" className="input" value={form.assetScale} onChange={e => update('assetScale', parseInt(e.target.value) || 0)} min={0} max={15} disabled={deploying} />
-              <p className="text-[10px] text-[var(--text-tertiary)] mt-1">0 = whole shares only</p>
-            </div>
-            <div>
-              <label className="label">Transfer Fee</label>
-              <input type="number" className="input" value={form.transferFee} onChange={e => update('transferFee', parseInt(e.target.value) || 0)} min={0} max={50000} disabled={deploying} />
-              <p className="text-[10px] text-[var(--text-tertiary)] mt-1">In tenths of a basis point</p>
-            </div>
-            <div>
-              <label className="label">Share Class</label>
-              <input className="input" value={form.shareClass} onChange={e => update('shareClass', e.target.value)} disabled={deploying} />
-            </div>
-            <div>
-              <label className="label">Distribution Frequency</label>
-              <select className="input" value={form.distributionFrequency} onChange={e => update('distributionFrequency', e.target.value)} disabled={deploying}>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="semi-annual">Semi-Annual</option>
-                <option value="annual">Annual</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Error */}
       {error && (
         <div className="rounded-xl border border-[var(--red)]/20 bg-[var(--red-soft)] px-4 py-3 text-sm text-[var(--red)]">
@@ -238,13 +248,13 @@ export default function CreateForm() {
           disabled={!isValid || !isConnected}
           className="btn-primary w-full py-3.5 text-[15px]"
         >
-          {!isConnected ? 'Connecting to XRPL...' : 'Deploy Token'}
+          {!isConnected ? 'Connecting to XRPL...' : 'Issue Token on XRPL'}
         </button>
       )}
 
       {metadataSize > 0 && (
         <p className={`text-[11px] text-center ${metadataSize > 1024 ? 'text-[var(--red)]' : 'text-[var(--text-tertiary)]'}`}>
-          On-chain metadata: {metadataSize} / 1,024 bytes
+          On-chain metadata: {metadataSize} / 1,024 bytes &middot; XLS-89
         </p>
       )}
     </div>
