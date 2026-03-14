@@ -5,7 +5,7 @@ import { useXRPL } from '@/hooks/useXRPL'
 import { useToken } from '@/hooks/useToken'
 import TopBar from '@/components/TopBar'
 import CreateForm from '@/components/CreateForm'
-import FundDashboard from '@/components/FundDashboard'
+import ShareManager from '@/components/ShareManager'
 import TokenList from '@/components/TokenList'
 
 type View = 'list' | 'create'
@@ -15,23 +15,22 @@ export default function Home() {
   const { token } = useToken()
   const [view, setView] = useState<View>('list')
 
-  // After deploy, show fund dashboard
   const isDeployed = !!token.mptIssuanceId
 
   return (
     <div className="min-h-screen">
       <TopBar status={status} />
 
-      <div className={`mx-auto px-6 py-12 ${isDeployed ? 'max-w-3xl' : 'max-w-2xl'}`}>
+      <div className="max-w-2xl mx-auto px-6 py-12">
         {isDeployed ? (
-          <FundDashboard />
+          <ShareManager />
         ) : view === 'list' ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight">Equity Protocol</h1>
                 <p className="text-[var(--text-secondary)] mt-1 text-sm">
-                  Tokenize private shares on the XRP Ledger. Trade on Liquid.
+                  Tokenize private shares on the XRP Ledger.
                 </p>
               </div>
               <button onClick={() => setView('create')} className="btn-primary">
