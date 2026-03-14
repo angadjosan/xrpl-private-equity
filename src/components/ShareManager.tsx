@@ -7,8 +7,9 @@ import type { RegistrationRecord } from '@/types'
 import FinancialsForm from './FinancialsForm'
 import RegisterShares from './RegisterShares'
 import VerifierDashboard from './VerifierDashboard'
+import NAVSync from './NAVSync'
 
-type SubView = 'overview' | 'register' | 'verify' | 'financials'
+type SubView = 'overview' | 'register' | 'verify' | 'financials' | 'nav'
 
 export default function ShareManager() {
   const { token, reset } = useToken()
@@ -37,6 +38,9 @@ export default function ShareManager() {
   if (subView === 'financials') {
     return <FinancialsForm onBack={() => setSubView('overview')} />
   }
+  if (subView === 'nav') {
+    return <NAVSync onBack={() => setSubView('overview')} />
+  }
 
   const pendingCount = registrations.filter(r => r.status === 'pending').length
   const verifiedCount = registrations.filter(r => r.status === 'verified').length
@@ -59,7 +63,7 @@ export default function ShareManager() {
       </div>
 
       {/* Action Cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setSubView('register')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group py-5">
           <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-2">
             <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -93,6 +97,16 @@ export default function ShareManager() {
           </div>
           <p className="text-sm font-medium">Add Financials</p>
           <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">DCF data for PE terminal</p>
+        </button>
+
+        <button onClick={() => setSubView('nav')} className="glass-sm text-center hover:border-[var(--accent)]/30 transition-colors group py-5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center mx-auto mb-2">
+            <svg className="w-5 h-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium">NAV Oracle</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Sync Liquid P&L → DEX</p>
         </button>
       </div>
 

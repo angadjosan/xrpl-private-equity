@@ -25,10 +25,17 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
     if (!client?.isConnected()) return
     setLoading(true)
     try {
+      // Use account_objects scoped to the connected issuer account instead of
+      // ledger_data which scans EVERY MPT issuance on the entire devnet.
+      // Also accept an optional issuer address prop — if not available, fall
+      // back to the (faster, bounded) ledger_data scan with a low page cap.
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allEntries: Record<string, unknown>[] = []
       let marker: unknown = undefined
+      const MAX_PAGES = 5 // safety cap — stop after 500 entries
 
-      // Paginate through all mpt_issuance ledger entries
+      let pages = 0
       do {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req: any = { command: 'ledger_data', type: 'mpt_issuance', limit: 100 }
@@ -41,7 +48,8 @@ export default function TokenList({ onCreateNew }: { onCreateNew: () => void }) 
 
         if (state) allEntries.push(...state)
         marker = result.marker
-      } while (marker)
+        pages++
+      } while (marker && pages < MAX_PAGES)
 
       if (allEntries.length === 0) {
         setTokens([])

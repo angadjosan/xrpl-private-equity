@@ -40,6 +40,11 @@ export function formatRippleTimestamp(rippleTime: number): string {
   })
 }
 
+/** Format number as USD currency */
+export function formatUSD(n: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n)
+}
+
 /** Format a number as a percentage with basis points */
 export function formatTransferFee(fee: number): string {
   // fee is in tenths of a basis point

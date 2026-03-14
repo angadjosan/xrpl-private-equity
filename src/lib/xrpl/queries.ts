@@ -6,14 +6,19 @@
 import type { Client } from 'xrpl'
 import type { MPTHolder, EscrowInfo } from '@/types'
 
-/** Returns all holders of a given MPT issuance with their balances */
+/** Returns all holders of a given MPT issuance with their balances.
+ *  Uses ledger_data scoped to mptoken type with a page cap to avoid
+ *  scanning the entire devnet. For large issuances, consider tracking
+ *  holders via MPTokenAuthorize transaction history instead. */
 export async function getMPTHolders(
   client: Client,
   mptIssuanceId: string
 ): Promise<MPTHolder[]> {
   const holders: MPTHolder[] = []
   let marker: unknown = undefined
+  const MAX_PAGES = 10 // cap at 1000 entries to avoid hanging on devnet
 
+  let pages = 0
   do {
     const req: any = { command: 'ledger_data', type: 'mptoken', limit: 100 }
     if (marker) req.marker = marker
@@ -34,7 +39,8 @@ export async function getMPTHolders(
     }
 
     marker = (response.result as any).marker
-  } while (marker)
+    pages++
+  } while (marker && pages < MAX_PAGES)
 
   return holders
 }
