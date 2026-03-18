@@ -27,8 +27,17 @@ export default function TokenList({ onCreateNew, onSelectToken }: { onCreateNew:
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    setTokens(loadTokens())
+    const loaded = loadTokens()
+    setTokens(loaded)
     setLoaded(true)
+    // Sync all tokens to shared file so PE trading terminal can read them
+    for (const tok of loaded) {
+      fetch('/api/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tok),
+      }).catch(() => {})
+    }
   }, [])
 
   if (!loaded) return null

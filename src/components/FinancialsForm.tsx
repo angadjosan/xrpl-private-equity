@@ -19,6 +19,12 @@ function loadFromStorage(mptIssuanceId: string): DCFData | null {
 
 function saveToStorage(data: DCFData) {
   localStorage.setItem(STORAGE_KEY_PREFIX + data.mptIssuanceId, JSON.stringify(data))
+  // Also persist to shared file for the PE trading terminal
+  fetch('/api/dcf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {})
 }
 
 function defaultFinancialRows(): FinancialEntry[] {

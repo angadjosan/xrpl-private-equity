@@ -118,18 +118,28 @@ export default function CreateForm() {
       setFlags(flagsValue)
 
       // Persist to localStorage so TokenList can show it across sessions
+      const tokenRecord = {
+        mptIssuanceId,
+        issuer: issuer.address,
+        maxAmount: String(form.totalShares),
+        metadata,
+        flags: flagsValue,
+        createdAt: new Date().toISOString(),
+      }
       try {
         const saved = JSON.parse(localStorage.getItem('equity_tokens') || '[]')
-        saved.push({
-          mptIssuanceId,
-          issuer: issuer.address,
-          maxAmount: String(form.totalShares),
-          metadata,
-          flags: flagsValue,
-          createdAt: new Date().toISOString(),
-        })
+        saved.push(tokenRecord)
         localStorage.setItem('equity_tokens', JSON.stringify(saved))
       } catch { /* localStorage unavailable */ }
+
+      // Sync to shared file so PE trading terminal can read it
+      try {
+        await fetch('/api/tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tokenRecord),
+        })
+      } catch { /* non-critical */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Deployment failed')
       setPhase(null)
